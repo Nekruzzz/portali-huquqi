@@ -9,8 +9,21 @@
   if (get("ph-contrast") === "1") root.classList.add("contrast");
 })();
 
+// iOS Safari only applies :active styles when a touch listener exists — gives instant press feedback.
+document.addEventListener("touchstart", () => {}, { passive: true });
+
 document.addEventListener("DOMContentLoaded", () => {
   const root = document.documentElement;
+
+  // Header edge appears only once content scrolls beneath the translucent bar.
+  let ticking = false;
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { root.classList.toggle("is-scrolled", window.scrollY > 4); ticking = false; });
+  };
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
   const set = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } };
   const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 
@@ -77,6 +90,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (biz) biz.addEventListener("change", apply);
     apply();
   }
+
+  // Menus close on Escape or a tap outside; never trap input.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") document.querySelectorAll("details.mobile-menu[open]").forEach((d) => d.removeAttribute("open"));
+  });
+  document.addEventListener("pointerdown", (e) => {
+    document.querySelectorAll("details.mobile-menu[open]").forEach((d) => { if (!d.contains(e.target)) d.removeAttribute("open"); });
+  });
 
   // Close the mobile menu after choosing a link.
   document.querySelectorAll(".mobile-menu a").forEach((a) =>

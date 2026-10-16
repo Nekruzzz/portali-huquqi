@@ -2,13 +2,12 @@
 <html lang="{{ 'tg' if lang == 'tj' else 'ru' }}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <title>{% block title %}{{ t('site_name') }}{% endblock %} · {{ t('site_tagline') }}</title>
   <meta name="description" content="{{ t('site_tagline') }}">
   <meta name="color-scheme" content="light dark">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Serif:wght@500;600;700&display=swap&subset=cyrillic-ext">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="alternate" type="application/atom+xml" title="{{ t('feed') }}" href="{{ url_for('feed') }}">
   <link rel="icon" href="{{ logo_url or url_for('static', filename='favicon.svg') }}">
@@ -150,5 +149,28 @@
     </div>
   </div>
 </footer>
+{% set ep = request.endpoint %}
+{% set tslug = request.view_args.get('slug') if request.view_args else None %}
+<nav class="tabbar" aria-label="{{ t('menu') }}">
+  <a href="{{ url_for('index') }}"{% if ep == 'index' %} aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1h-5v-6h-5v6h-5a1 1 0 0 1-1-1z"/></svg>
+    <span>{{ t('nav_home') }}</span></a>
+  <a href="{{ url_for('registry', slug='drafts') }}"{% if tslug in ('drafts', 'plans') %} aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 20 12z"/><path d="M8.5 10.5h7M8.5 13.5h4.5" stroke-linecap="round"/></svg>
+    <span>{{ t('nav_drafts') }}</span></a>
+  <a href="{{ url_for('registry', slug='acts') }}"{% if tslug == 'acts' %} aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/></svg>
+    <span>{{ t('nav_acts') }}</span></a>
+  <a href="{{ url_for('search') }}"{% if ep == 'search' %} aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+    <span>{{ t('nav_search') }}</span></a>
+  {% if g.user %}
+  <a href="{{ url_for('account') }}"{% if ep and (ep.startswith('account') or ep == 'manage' or ep.startswith('manage')) %} aria-current="page"{% endif %}>
+  {% else %}
+  <a href="{{ url_for('login') }}"{% if ep in ('login', 'register', 'forgot') %} aria-current="page"{% endif %}>
+  {% endif %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c.8-3.6 4-5.5 7.5-5.5s6.7 1.9 7.5 5.5" stroke-linecap="round"/></svg>
+    <span>{{ t('account') if g.user else t('login') }}</span></a>
+</nav>
 </body>
 </html>

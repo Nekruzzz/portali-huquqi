@@ -447,8 +447,7 @@ def headers(resp):
     resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     resp.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; style-src 'self' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; "
+        "default-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; "
         "script-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'")
     if request.path.startswith("/api/"):
         resp.headers["Access-Control-Allow-Origin"] = "*"
