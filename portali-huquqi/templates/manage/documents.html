@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import status_badge, pagination, csrf with context %}
+{% block title %}{{ t('documents') }}{% endblock %}
+{% block content %}
+<div class="wrap section">
+  {% include 'manage/_nav.html' %}
+  <div class="section-head">
+    <h1>{{ t('documents') }} <span class="muted">({{ total }})</span></h1>
+    <a class="btn btn-primary" href="{{ url_for('edit_document', kind=kind or 'plan') }}">+ {{ t('new_document') }}</a>
+  </div>
+  <form class="filters" method="get">
+    <div class="filter-q"><input name="q" type="search" value="{{ request.args.get('q', '') }}" placeholder="{{ t('search_placeholder') }}" aria-label="{{ t('nav_search') }}"></div>
+    <label class="field-inline"><span>{{ t('kind_label') }}</span>
+      <select name="kind"><option value="">{{ t('all') }}</option>
+        {% for k in KINDS %}<option value="{{ k }}"{% if kind == k %} selected{% endif %}>{{ t('kind_' ~ k) }}</option>{% endfor %}
+      </select></label>
+    <div class="filter-actions"><button class="btn btn-primary">{{ t('filter_apply') }}</button></div>
+  </form>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>ID</th><th>{{ t('kind_label') }}</th><th>{{ t('field_title_tj') }}</th><th>{{ t('filter_status') }}</th><th>{{ t('date') }}</th><th>{{ t('comments_count') }}</th><th>{{ t('actions') }}</th></tr></thead>
+    <tbody>
+    {% for d in rows %}
+      <tr>
+        <td>{{ d.id }}</td>
+        <td>{{ t('kind_' ~ d.kind) }}</td>
+        <td><a href="{{ url_for('edit_document', doc_id=d.id) }}">{{ L(d, 'title')|truncate(90) }}</a>{% if not d.published %} <span class="badge badge-hidden">{{ t('draft_hidden') }}</span>{% endif %}</td>
+        <td>{% if d.kind != 'act' %}{{ status_badge(d) }}{% endif %}</td>
+        <td>{{ fmt_date(d.doc_date) }}</td>
+        <td>{{ d.n_comments }}</td>
+        <td class="actions-cell">
+          <a class="btn btn-link" href="{{ url_for('document', doc_id=d.id) }}">{{ t('view_public') }}</a>
+          <a class="btn btn-link" href="{{ url_for('edit_document', doc_id=d.id) }}">{{ t('edit') }}</a>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">{{ t('no_results') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {{ pagination(page, pages) }}
+</div>
+{% endblock %}

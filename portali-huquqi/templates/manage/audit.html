@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('audit') }}{% endblock %}
+{% block content %}
+<div class="wrap section">
+  {% include 'manage/_nav.html' %}
+  <h1>{{ t('audit') }}</h1>
+  <div class="table-wrap"><table class="table mono">
+    <thead><tr><th>{{ t('date') }}</th><th>{{ t('email') }}</th><th>{{ t('actions') }}</th><th>ID</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.created_at }}</td><td>{{ r.email or '—' }}</td><td>{{ r.action }}</td><td>{{ r.target or '' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

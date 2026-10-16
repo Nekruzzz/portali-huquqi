@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('settings') }}{% endblock %}
+{% block content %}
+<div class="wrap section">
+  {% include 'manage/_nav.html' %}
+  <h1>{{ t('settings') }}</h1>
+  <form method="post" enctype="multipart/form-data" class="edit-form">
+    {{ csrf() }}
+    <fieldset>
+      <legend>{{ t('logo') }}</legend>
+      {% if logo_url %}
+        <div class="logo-preview">
+          <span class="small muted">{{ t('logo_current') }}</span>
+          <img src="{{ logo_url }}" alt="{{ t('logo_current') }}">
+        </div>
+        <label class="check"><input type="checkbox" name="remove_logo" value="1"> <span>{{ t('logo_remove') }}</span></label>
+      {% endif %}
+      <label><span>{{ t('logo') }}</span><input type="file" name="logo" accept=".png,.svg,.jpg,.jpeg,.webp"></label>
+      <p class="small muted">{{ t('logo_hint') }}</p>
+    </fieldset>
+    <fieldset>
+      <legend>{{ t('contact') }}</legend>
+      {% for k in keys %}
+        <label><span>{{ t(k) }}</span><input type="{{ 'email' if k == 'contact_email' else 'text' }}" name="{{ k }}" value="{{ s.get(k) or '' }}" maxlength="500"></label>
+      {% endfor %}
+    </fieldset>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">{{ t('save') }}</button></div>
+  </form>
+</div>
+{% endblock %}

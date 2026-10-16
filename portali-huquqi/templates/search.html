@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import doc_card, pagination with context %}
+{% block title %}{{ t('nav_search') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="wrap">
+    <h1>{{ t('search_title') }}</h1>
+  </div>
+</div>
+<div class="wrap section">
+  {% set show_kind = true %}
+  {% set show_legal = true %}
+  {% set statuses = ['upcoming', 'consultation', 'review', 'concluded', 'proceed', 'adopted', 'rejected'] %}
+  {% include '_filters.html' %}
+  <p class="result-count" aria-live="polite"><strong>{{ total }}</strong> {{ t('results') }}</p>
+  {% if rows %}
+    <div class="card-list">{% for d in rows %}{{ doc_card(d, show_kind=true) }}{% endfor %}</div>
+    {{ pagination(page, pages) }}
+  {% else %}
+    <p class="empty">{{ t('no_results') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

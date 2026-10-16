@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('register') }} · {{ t('acc_' ~ acc_type) }}{% endblock %}
+{% block content %}
+{% set labels = {
+  'full_name': t('full_name') if acc_type == 'individual' else t('rep_name'),
+  'position': t('position'), 'workplace': t('workplace'), 'org_name': t('org_name'),
+  'org_activity': t('org_activity'), 'authority_basis': t('authority_basis'),
+  'head_name': t('head_name'), 'head_phone': t('head_phone'), 'tax_id': t('tax_id'),
+  'address': t('address_home') if acc_type == 'individual' else t('address_legal'),
+  'passport': t('passport'), 'email': t('email'), 'phone': t('phone')} %}
+{% set types = {'email': 'email', 'phone': 'tel', 'head_phone': 'tel'} %}
+{% set autos = {'email': 'email', 'phone': 'tel', 'full_name': 'name', 'address': 'street-address', 'org_name': 'organization', 'position': 'organization-title'} %}
+<div class="wrap narrow section">
+  <a class="back" href="{{ url_for('register') }}">← {{ t('register_title') }}</a>
+  <div class="panel">
+    <p class="eyebrow">{{ t('annex') }} {{ {'state_body': 1, 'legal_entity': 2, 'individual': 3}[acc_type] }}</p>
+    <h1>{{ t('acc_' ~ acc_type) }}</h1>
+    {% if errors %}
+      <div class="flash flash-error" role="alert"><ul class="plain">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+    {% endif %}
+    <form method="post" class="stack" novalidate>
+      {{ csrf() }}
+      <input type="hidden" name="type" value="{{ acc_type }}">
+      {% for name, required in fields %}
+        <label{% if name in missing %} class="invalid"{% endif %}>
+          <span>{{ labels[name] }}{% if required %} <span class="req" aria-hidden="true">*</span>{% else %} <span class="muted small">({{ t('optional') }})</span>{% endif %}</span>
+          <input type="{{ types.get(name, 'text') }}" name="{{ name }}" value="{{ form.get(name, '') }}" maxlength="300"
+                 {% if autos.get(name) %}autocomplete="{{ autos[name] }}"{% endif %}{% if required %} required aria-required="true"{% endif %}{% if name in missing %} aria-invalid="true"{% endif %}>
+        </label>
+      {% endfor %}
+      <label><span>{{ t('password') }} <span class="req" aria-hidden="true">*</span></span>
+        <input type="password" name="password" minlength="10" autocomplete="new-password" required aria-describedby="pwh">
+        <span id="pwh" class="small muted">{{ t('password_hint') }}</span>
+      </label>
+      <label><span>{{ t('password2') }} <span class="req" aria-hidden="true">*</span></span>
+        <input type="password" name="password2" minlength="10" autocomplete="new-password" required>
+      </label>
+      <label class="check"><input type="checkbox" name="consent" value="1" required> <span>{{ t('consent') }}</span></label>
+      <p class="small muted">{{ t('responsibility') }}</p>
+      <button class="btn btn-primary btn-block" type="submit">{{ t('register_submit') }}</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

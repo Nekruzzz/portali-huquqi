@@ -1,0 +1,328 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import status_badge, legal_badge, consult_meter, csrf with context %}
+{% block title %}{{ L(doc, 'title')|truncate(80) }}{% endblock %}
+{% block content %}
+{% set headings = blocks|selectattr('type', 'equalto', 'h')|list %}
+{% set visible_comments = comments|selectattr('status', 'equalto', 'visible')|list %}
+{% set has_links = links.amended_by or links.amends or links.repealed_by or links.repeals %}
+<div class="page-head doc-head kind-{{ doc.kind }}">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="breadcrumbs">
+      <a href="{{ url_for('index') }}">{{ t('nav_home') }}</a> /
+      <a href="{{ url_for('registry', slug=SLUG_OF_KIND[doc.kind]) }}">{{ t('nav_' ~ SLUG_OF_KIND[doc.kind]) }}</a>
+    </nav>
+    <div class="doc-head-meta">
+      <span class="kind-tag">{{ t('kind_' ~ doc.kind) }}</span>
+      {% if doc.doc_type %}<span>{{ doc_type_label(doc.doc_type) }}</span>{% endif %}
+      {% if doc.number %}<span>№&nbsp;{{ doc.number }}</span>{% endif %}
+      {% if doc.kind != 'act' %}{{ status_badge(doc) }}{% endif %}
+      {{ legal_badge(doc, always=true) }}
+      {% if not doc.published %}<span class="badge badge-hidden">{{ t('draft_hidden') }}</span>{% endif %}
+    </div>
+    <h1 class="doc-title">{{ L(doc, 'title') }}</h1>
+    {% if L(doc, 'developer') %}<p class="lead">{{ L(doc, 'developer') }}</p>{% endif %}
+  </div>
+</div>
+
+<div class="wrap doc-layout">
+  <aside class="doc-side" aria-label="{{ t('on_this_page') }}">
+    <div class="side-card">
+      <dl class="meta-list">
+        {% if doc.doc_date %}<div><dt>{{ t('date_adopted' if doc.kind == 'act' else 'date_posted') }}</dt><dd>{{ fmt_date(doc.doc_date) }}</dd></div>{% endif %}
+        {% if doc.number %}<div><dt>{{ t('number') }}</dt><dd>{{ doc.number }}</dd></div>{% endif %}
+        {% if doc.kind == 'act' %}
+          {% if L(doc, 'developer') %}<div><dt>{{ t('adopted_by') }}</dt><dd>{{ L(doc, 'developer') }}</dd></div>{% endif %}
+          {% if doc.effective_date %}<div><dt>{{ t('effective_date') }}</dt><dd>{{ fmt_date(doc.effective_date) }}</dd></div>{% endif %}
+          {% if L(doc, 'publication') %}<div><dt>{{ t('publication_source') }}</dt><dd>{{ L(doc, 'publication') }}</dd></div>{% endif %}
+          {% if doc.mj_reg_number %}<div><dt>{{ t('mj_registration') }}</dt><dd>№ {{ doc.mj_reg_number }}{% if doc.mj_reg_date %}, {{ fmt_date(doc.mj_reg_date) }}{% endif %}</dd></div>{% endif %}
+        {% endif %}
+        {% if doc.dev_deadline %}<div><dt>{{ t('dev_deadline') }}</dt><dd>{{ fmt_date(doc.dev_deadline) }}</dd></div>{% endif %}
+        {% if doc.adopt_deadline %}<div><dt>{{ t('adopt_deadline') }}</dt><dd>{{ fmt_date(doc.adopt_deadline) }}</dd></div>{% endif %}
+        {% if doc.consult_start and doc.kind != 'act' %}<div><dt>{{ t('consult_period') }}</dt><dd>{{ fmt_date(doc.consult_start) }} — {{ fmt_date(doc.consult_end) }}</dd></div>{% endif %}
+      </dl>
+      {{ consult_meter(doc) }}
+      {% if doc.status == 'consultation' %}
+        <a class="btn btn-primary btn-block" href="#comment-form">{{ t('propose') }}</a>
+      {% endif %}
+      {% if g.user %}
+      <form method="post" action="{{ url_for('follow', doc_id=doc.id) }}" class="follow-form">
+        {{ csrf() }}
+        <button class="btn btn-ghost btn-block" type="submit" aria-pressed="{{ 'true' if following else 'false' }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="{{ 'currentColor' if following else 'none' }}" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          {{ t('unfollow') if following else t('follow') }}
+        </button>
+        {% if following %}<p class="small muted">{{ t('following_on') }}</p>{% endif %}
+      </form>
+      {% endif %}
+      <div class="side-actions">
+        <button class="btn btn-ghost js-print" type="button">{{ t('print') }}</button>
+        <button class="btn btn-ghost js-copy" type="button" data-done="{{ t('share') }}">{{ t('copy_link') }}</button>
+        {% if blocks %}<a class="btn btn-ghost" href="{{ url_for('document_text', doc_id=doc.id) }}">{{ t('download_text') }}</a>{% endif %}
+        {% if can_edit %}<a class="btn btn-ghost" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ t('edit') }}</a>{% endif %}
+      </div>
+    </div>
+
+    {% if doc.kind != 'act' %}
+    <div class="side-card" id="vote">
+      <h2 class="side-h">{{ t('vote_title') }}</h2>
+      {% set total_votes = votes_for + votes_against %}
+      {% if total_votes %}
+      <div class="vote-bar" aria-hidden="true">
+        <progress max="{{ total_votes }}" value="{{ votes_for }}"></progress>
+      </div>
+      {% endif %}
+      <p class="vote-counts small"><span class="vote-for">{{ t('vote_for') }}: <strong>{{ votes_for }}</strong></span> <span class="vote-against">{{ t('vote_against') }}: <strong>{{ votes_against }}</strong></span></p>
+      {% if doc.status == 'consultation' %}
+        {% if g.user and g.user.status == 'active' %}
+        <form method="post" action="{{ url_for('vote', doc_id=doc.id) }}" class="vote-form">
+          {{ csrf() }}
+          <button class="btn {{ 'btn-primary' if my_vote == 1 else 'btn-ghost' }}" name="value" value="{{ '0' if my_vote == 1 else '1' }}" aria-pressed="{{ 'true' if my_vote == 1 else 'false' }}">{{ t('vote_for') }}</button>
+          <button class="btn {{ 'btn-danger' if my_vote == -1 else 'btn-ghost' }}" name="value" value="{{ '0' if my_vote == -1 else '-1' }}" aria-pressed="{{ 'true' if my_vote == -1 else 'false' }}">{{ t('vote_against') }}</button>
+        </form>
+        {% elif not g.user %}
+        <p class="small muted"><a href="{{ url_for('login', next=request.path ~ '#vote') }}">{{ t('vote_login') }}</a></p>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <nav class="side-card toc">
+      <h2 class="side-h">{{ t('on_this_page') }}</h2>
+      <ul class="plain">
+        {% if L(doc, 'summary') %}<li><a href="#summary">{{ t('summary') }}</a></li>{% endif %}
+        {% if detail_rows %}<li><a href="#details">{{ t('ria') if doc.kind == 'draft' else t('notification') }}</a></li>{% endif %}
+        {% if blocks %}<li><a href="#text">{{ t('full_text') }}</a>
+          {% if headings %}<ul class="plain toc-sub">{% for h in headings[:30] %}<li><a href="#{{ h.id }}">{{ h.text|truncate(48) }}</a></li>{% endfor %}</ul>{% endif %}
+        </li>{% endif %}
+        {% if has_links %}<li><a href="#amendments">{{ t('amendments') }}</a></li>{% endif %}
+        {% if attachments or doc.source_url %}<li><a href="#files">{{ t('attachments') }}</a></li>{% endif %}
+        {% if parent or children %}<li><a href="#lifecycle">{{ t('lifecycle') }}</a></li>{% endif %}
+        {% if doc.kind != 'act' %}<li><a href="#comments">{{ t('comments') }} ({{ visible_comments|length }})</a></li>{% endif %}
+      </ul>
+    </nav>
+  </aside>
+
+  <article class="doc-main">
+    {% if can_edit and doc.returned_note %}
+      <div class="callout"><strong>{{ t('returned_note') }}:</strong> <span class="pre">{{ doc.returned_note }}</span></div>
+    {% endif %}
+
+    {% if L(doc, 'summary') %}
+    <section id="summary" class="doc-section">
+      <h2>{{ t('summary') }}</h2>
+      <p class="summary-text">{{ L(doc, 'summary') }}</p>
+    </section>
+    {% endif %}
+
+    {% if links.repealed_by %}
+    <div class="callout callout-danger">
+      <strong>{{ t('repealed_by') }}:</strong>
+      {% for r in links.repealed_by %}<a href="{{ url_for('document', doc_id=r.id) }}">{{ L(r, 'title') }}</a> ({{ fmt_date(r.doc_date) }}){% if not loop.last %}; {% endif %}{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if detail_rows %}
+    <section id="details" class="doc-section">
+      <h2>{{ t('ria') if doc.kind == 'draft' else t('notification') }}</h2>
+      {% if doc.kind == 'plan' and doc.affects_business %}<p class="note">{{ t('business_note') }}</p>{% endif %}
+      <dl class="detail-list">
+        {% for key, value in detail_rows %}
+          <div><dt>{{ detail_label(key) }}</dt><dd>{{ value }}</dd></div>
+        {% endfor %}
+      </dl>
+    </section>
+    {% endif %}
+
+    {% if blocks %}
+    <section id="text" class="doc-section legal-text">
+      <h2>{{ t('full_text') }}</h2>
+      {% if body_fallback %}<p class="note">{{ t('text_missing_lang') }}</p>{% endif %}
+      {% for b in blocks %}
+        {% if b.type == 'h' %}<h3 id="{{ b.id }}">{{ b.text }}</h3>
+        {% else %}<p>{{ b.text }}</p>{% endif %}
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if has_links %}
+    <section id="amendments" class="doc-section">
+      <h2>{{ t('amendments') }}</h2>
+      {% for key in ('amended_by', 'repealed_by', 'amends', 'repeals') %}
+        {% if links[key] %}
+        <h3>{{ t({'amended_by': 'amended_by', 'repealed_by': 'repealed_by', 'amends': 'amends_list', 'repeals': 'repeals_list'}[key]) }}</h3>
+        <ul class="act-list">
+          {% for r in links[key] %}
+          <li><a href="{{ url_for('document', doc_id=r.id) }}">
+            <span class="act-meta">{{ doc_type_label(r.doc_type) }}{% if r.number %} · № {{ r.number }}{% endif %} · {{ fmt_date(r.doc_date) }}</span>
+            <span class="act-title">{{ L(r, 'title') }}</span></a></li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if attachments or doc.source_url %}
+    <section id="files" class="doc-section">
+      <h2>{{ t('attachments') }}</h2>
+      <ul class="file-list">
+        {% for a in attachments %}
+        <li>
+          <a href="{{ url_for('download', stored_name=a.stored_name) }}">
+            <span class="file-ext">{{ a.original_name.rsplit('.', 1)[-1]|upper }}</span>
+            <span>{{ a.original_name }}</span>
+            <span class="muted small">{{ (a.size / 1024)|round(0)|int }} KB</span>
+          </a>
+        </li>
+        {% endfor %}
+        {% if doc.source_url %}
+        <li><a href="{{ doc.source_url }}" rel="noopener" target="_blank"><span class="file-ext">URL</span><span>{{ t('source_link') }}</span></a></li>
+        {% endif %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if parent or children %}
+    <section id="lifecycle" class="doc-section">
+      <h2>{{ t('lifecycle') }}</h2>
+      <ol class="timeline">
+        {% if parent %}
+          <li><span class="kind-tag">{{ t('kind_' ~ parent.kind) }}</span> <a href="{{ url_for('document', doc_id=parent.id) }}">{{ L(parent, 'title') }}</a> <span class="muted small">{{ fmt_date(parent.doc_date) }}</span></li>
+        {% endif %}
+        <li class="current"><span class="kind-tag">{{ t('kind_' ~ doc.kind) }}</span> {{ L(doc, 'title') }}</li>
+        {% for c in children %}
+          <li><span class="kind-tag">{{ t('kind_' ~ c.kind) }}</span> <a href="{{ url_for('document', doc_id=c.id) }}">{{ L(c, 'title') }}</a> <span class="muted small">{{ fmt_date(c.doc_date) }}</span></li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endif %}
+
+    {% if doc.kind != 'act' %}
+      {% if doc.status in ('review', 'concluded', 'proceed', 'adopted', 'rejected') %}
+      <section class="doc-section">
+        <h2>{{ t('conclusion') }}</h2>
+        {% if L(doc, 'conclusion') %}
+          <p class="muted small">{{ fmt_date(doc.conclusion_date) }}</p>
+          <p class="pre">{{ L(doc, 'conclusion') }}</p>
+        {% else %}
+          <p class="note">{{ t('conclusion_pending') }}</p>
+        {% endif %}
+        {% if doc.outcome %}
+          <h3>{{ t('outcome') }}</h3>
+          <p><span class="badge badge-{{ doc.outcome }}">{{ t('outcome_' ~ doc.outcome) }}</span> <span class="muted small">{{ fmt_date(doc.outcome_date) }}</span></p>
+          {% if L(doc, 'outcome_note') %}<p class="pre">{{ L(doc, 'outcome_note') }}</p>{% endif %}
+        {% endif %}
+      </section>
+      {% endif %}
+
+      <section id="comments" class="doc-section">
+        <div class="section-head">
+          <h2>{{ t('comments') }} <span class="muted">({{ visible_comments|length }})</span></h2>
+          {% if can_edit and comments %}<a class="btn btn-ghost btn-sm" href="{{ url_for('proposals_csv', doc_id=doc.id) }}">{{ t('export_csv') }}</a>{% endif %}
+        </div>
+
+        {% if doc.status != 'consultation' and doc.status != 'upcoming' and visible_comments %}
+        <div class="table-wrap">
+          <table class="summary-table">
+            <caption>{{ t('summary_table') }}</caption>
+            <thead><tr><th>#</th><th>{{ t('author') }}</th><th>{{ t('article_ref') }}</th><th>{{ t('comment_label') }}</th><th>{{ t('response') }}</th></tr></thead>
+            <tbody>
+            {% for c in visible_comments %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ display_name(c) }}</td>
+                <td>{{ c.article_ref or t('article_general') }}</td>
+                <td>{{ c.body|truncate(200) }}</td>
+                <td><span class="badge badge-d-{{ c.decision or 'none' }}">{{ t('decision_' ~ (c.decision or 'none')) }}</span>{% if c.response %}<br><span class="small">{{ c.response|truncate(200) }}</span>{% endif %}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        {% if comments %}
+        <ol class="comments">
+          {% for c in comments %}
+          <li id="c{{ c.id }}" class="comment{% if c.status == 'hidden' %} is-hidden{% endif %}">
+            <div class="comment-head">
+              <span class="avatar" aria-hidden="true">{{ display_name(c)[:1] }}</span>
+              <strong>{{ display_name(c) }}</strong>
+              <span class="muted small">{{ t('acc_' ~ c.account_type) }} · {{ fmt_date(c.created_at) }}</span>
+              {% if c.status == 'hidden' %}<span class="badge badge-hidden">{{ t('hidden_comment') }}</span>{% endif %}
+              {% if c.decision %}<span class="badge badge-d-{{ c.decision }}">{{ t('decision_' ~ c.decision) }}</span>{% endif %}
+            </div>
+            {% if c.article_ref %}<p class="article-tag">§ {{ c.article_ref }}</p>{% endif %}
+            <p class="pre comment-body">{{ c.body }}</p>
+            {% if c.response %}
+              <div class="response"><strong>{{ t('response') }}:</strong> <span class="pre">{{ c.response }}</span></div>
+            {% endif %}
+            {% if can_edit %}
+            <details class="respond">
+              <summary>{{ t('respond') }}</summary>
+              <form method="post" action="{{ url_for('respond_comment', comment_id=c.id) }}" class="stack">
+                {{ csrf() }}
+                <label>{{ t('outcome') }}
+                  <select name="decision">
+                    <option value="">{{ t('decision_none') }}</option>
+                    {% for dcs in ('accepted', 'partial', 'rejected') %}<option value="{{ dcs }}"{% if c.decision == dcs %} selected{% endif %}>{{ t('decision_' ~ dcs) }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label>{{ t('response') }}<textarea name="response" rows="3">{{ c.response or '' }}</textarea></label>
+                <div class="row">
+                  <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+                </div>
+              </form>
+              {% if g.user and g.user.role == 'admin' %}
+              <form method="post" action="{{ url_for('respond_comment', comment_id=c.id) }}">
+                {{ csrf() }}
+                <input type="hidden" name="action" value="{{ 'show' if c.status == 'hidden' else 'hide' }}">
+                <button class="btn btn-link" type="submit">{{ t('show') if c.status == 'hidden' else t('hide') }}</button>
+              </form>
+              {% endif %}
+            </details>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+          <p class="empty">{{ t('no_comments') }}</p>
+        {% endif %}
+
+        <div id="comment-form" class="comment-box">
+        {% if doc.status == 'upcoming' %}
+          <p class="note">{{ t('comment_not_started') }}</p>
+        {% elif doc.status != 'consultation' %}
+          <p class="note">{{ t('comment_closed') }}</p>
+        {% elif not g.user %}
+          <p class="note">{{ t('comment_login') }}</p>
+          <div class="row">
+            <a class="btn btn-primary" href="{{ url_for('login', next=request.path ~ '#comment-form') }}">{{ t('login') }}</a>
+            <a class="btn btn-ghost" href="{{ url_for('register') }}">{{ t('register') }}</a>
+          </div>
+        {% elif g.user.status != 'active' %}
+          <p class="note">{{ t('comment_pending') }}</p>
+        {% else %}
+          <form method="post" action="{{ url_for('add_comment', doc_id=doc.id) }}" class="stack">
+            {{ csrf() }}
+            <label>{{ t('article_ref') }}
+              <select name="article_ref">
+                {% for o in article_options %}<option>{{ o }}</option>{% endfor %}
+              </select>
+            </label>
+            <label for="cbody"><strong>{{ t('comment_label') }}</strong></label>
+            <p id="chint" class="small muted">{{ t('comment_hint') }}</p>
+            <textarea id="cbody" name="body" rows="6" minlength="5" maxlength="3000" required aria-describedby="chint" class="js-count">{{ session.get('comment_draft', '') }}</textarea>
+            <div class="row between">
+              <span class="small muted js-counter" aria-live="polite"></span>
+              <button class="btn btn-primary" type="submit">{{ t('comment_submit') }}</button>
+            </div>
+            <p class="small muted">{{ t('responsibility') }}</p>
+          </form>
+        {% endif %}
+        </div>
+      </section>
+    {% endif %}
+  </article>
+</div>
+{% endblock %}

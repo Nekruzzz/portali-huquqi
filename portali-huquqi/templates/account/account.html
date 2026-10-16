@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import doc_card, csrf with context %}
+{% block title %}{{ t('account') }}{% endblock %}
+{% block content %}
+{% set u = g.user %}
+<div class="page-head">
+  <div class="wrap">
+    <p class="eyebrow">{{ t('acc_' ~ u.account_type) }} · {{ t('role_' ~ u.role) }}</p>
+    <h1>{{ u.org_name if u.account_type != 'individual' and u.org_name else u.full_name }}</h1>
+    <p><span class="badge badge-acc-{{ u.status }}">{{ t('acc_status') }}: {{ t('status_' ~ u.status) }}</span></p>
+  </div>
+</div>
+<div class="wrap section account-grid">
+  <div>
+    {% if u.admin_note and u.status != 'active' %}
+    <div class="callout callout-danger"><strong>{{ t('admin_note') }}:</strong> {{ u.admin_note }}</div>
+    {% endif %}
+    {% if u.status == 'pending' %}
+    <div class="callout">
+      <h2>{{ t('status_pending') }}</h2>
+      <p>{{ t('pending_explain') }}</p>
+      <a class="btn btn-primary" href="{{ url_for('application') }}" target="_blank" rel="noopener">{{ t('print_application') }}</a>
+    </div>
+    {% endif %}
+
+    {% if u.role in ('developer', 'admin') and u.status == 'active' %}
+    <section class="section-tight">
+      <div class="section-head">
+        <h2>{{ t('my_documents') }}</h2>
+        <div class="row">
+          <a class="btn btn-ghost" href="{{ url_for('edit_document', kind='plan') }}">+ {{ t('kind_plan') }}</a>
+          <a class="btn btn-ghost" href="{{ url_for('edit_document', kind='draft') }}">+ {{ t('kind_draft') }}</a>
+        </div>
+      </div>
+      {% if docs %}<div class="card-list">{% for d in docs %}{{ doc_card(d, show_kind=true) }}{% endfor %}</div>
+      {% else %}<p class="empty">{{ t('no_results') }}</p>{% endif %}
+    </section>
+    {% endif %}
+
+    <section class="section-tight" id="subscriptions">
+      <h2>{{ t('my_subscriptions') }}</h2>
+      {% if subs %}
+      <ul class="plain task-list">
+        {% for s in subs %}
+        <li class="row between">
+          <span>
+          {% if s.document_id %}
+            <span class="kind-tag">{{ t('follow') }}</span>
+            <a href="{{ url_for('document', doc_id=s.document_id) }}">{{ s.title_ru if lang == 'ru' and s.title_ru else s.title_tj }}</a>
+            <span class="badge badge-{{ s.doc_status }}">{{ t('st_' ~ s.doc_status) }}</span>
+          {% else %}
+            <span class="kind-tag">{{ t('subscribe_register') }}</span>
+            <a href="{{ url_for('registry', slug=SLUG_OF_KIND[s.kind], dev=s.developer or None) }}">{{ t('reg_title_' ~ s.kind) }}</a>
+            <span class="small muted">· {{ s.developer or t('all_developers') }}</span>
+          {% endif %}
+          </span>
+          <form method="post" action="{{ url_for('delete_subscription', sub_id=s.id) }}">{{ csrf() }}
+            <button class="btn btn-link btn-sm" type="submit">{{ t('unsubscribe_register') }}</button></form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="empty">{{ t('no_results') }}</p>{% endif %}
+    </section>
+
+    <section class="section-tight">
+      <h2>{{ t('my_comments') }}</h2>
+      {% if comments %}
+      <ul class="plain my-comments">
+        {% for c in comments %}
+        <li>
+          <a href="{{ url_for('document', doc_id=c.document_id) }}#c{{ c.id }}">{{ c.title_ru if lang == 'ru' and c.title_ru else c.title_tj }}</a>
+          <p class="pre small">{{ c.body|truncate(240) }}</p>
+          <p class="small muted">{{ fmt_date(c.created_at) }} ·
+            <span class="badge badge-d-{{ c.decision or 'none' }}">{{ t('decision_' ~ (c.decision or 'none')) }}</span>
+            {% if c.status == 'hidden' %}<span class="badge badge-hidden">{{ t('hidden_comment') }}</span>{% endif %}</p>
+          {% if c.response %}<div class="response small"><strong>{{ t('response') }}:</strong> {{ c.response }}</div>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="empty">{{ t('no_comments') }}</p>{% endif %}
+    </section>
+  </div>
+  <aside>
+    <div class="side-card">
+      <h2 class="side-h">{{ t('section_main') }}</h2>
+      <dl class="meta-list">
+        {% for name, _ in fields %}{% if u[name] and name != 'passport' %}
+          <div><dt>{{ t({'full_name': 'full_name', 'address': 'address_home' if u.account_type == 'individual' else 'address_legal'}.get(name, name)) }}</dt><dd>{{ u[name] }}</dd></div>
+        {% endif %}{% endfor %}
+        <div><dt>{{ t('created') }}</dt><dd>{{ fmt_date(u.created_at) }}</dd></div>
+      </dl>
+      <p class="small">{{ t('notify_email') }}: <strong>{{ '✓' if u.notify_email else '—' }}</strong></p>
+      <div class="stack">
+        <a class="btn btn-primary btn-block" href="{{ url_for('account_edit') }}">{{ t('edit_profile') }}</a>
+        <a class="btn btn-ghost btn-block" href="{{ url_for('application') }}" target="_blank" rel="noopener">{{ t('print_application') }}</a>
+      </div>
+    </div>
+  </aside>
+</div>
+{% endblock %}

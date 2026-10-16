@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import doc_card, pagination, csrf with context %}
+{% block title %}{{ t('reg_title_' ~ kind) }}{% endblock %}
+{% block content %}
+<div class="page-head kind-{{ kind }}">
+  <div class="wrap">
+    <p class="eyebrow">{{ t('kind_label') }} · {{ t('nav_' ~ slug) }}</p>
+    <h1>{{ t('reg_title_' ~ kind) }}</h1>
+    <p class="lead">{{ t('reg_desc_' ~ kind) }}</p>
+    {% if kind != 'act' %}
+    <div class="row head-actions">
+      {% if g.user %}
+      <form method="post" action="{{ url_for('subscribe') }}">
+        {{ csrf() }}
+        <input type="hidden" name="kind" value="{{ kind }}">
+        <input type="hidden" name="dev" value="{{ request.args.get('dev', '') }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <button class="btn {{ 'btn-ghost' if subscribed else 'btn-primary' }}" type="submit">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          {{ t('unsubscribe_register') if subscribed else t('subscribe_register') }}{% if request.args.get('dev') %}: {{ request.args.get('dev') }}{% endif %}
+        </button>
+      </form>
+      {% else %}
+      <a class="btn btn-ghost" href="{{ url_for('login', next=request.full_path) }}">{{ t('subscribe_register') }}</a>
+      {% endif %}
+      <a class="btn btn-link" href="{{ url_for('feed') }}">RSS</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+<div class="wrap section">
+  {% set show_kind = false %}
+  {% set show_legal = kind == 'act' %}
+  {% include '_filters.html' %}
+  <p class="result-count" aria-live="polite"><strong>{{ total }}</strong> {{ t('results') }}</p>
+  {% if rows %}
+    <div class="card-list">{% for d in rows %}{{ doc_card(d) }}{% endfor %}</div>
+    {{ pagination(page, pages) }}
+  {% else %}
+    <p class="empty">{{ t('no_results') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

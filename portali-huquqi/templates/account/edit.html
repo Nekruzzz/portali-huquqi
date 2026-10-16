@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('edit_profile') }}{% endblock %}
+{% block content %}
+{% set acc_type = g.user.account_type %}
+{% set labels = {
+  'full_name': t('full_name') if acc_type == 'individual' else t('rep_name'),
+  'position': t('position'), 'workplace': t('workplace'), 'org_name': t('org_name'),
+  'org_activity': t('org_activity'), 'authority_basis': t('authority_basis'),
+  'head_name': t('head_name'), 'head_phone': t('head_phone'), 'tax_id': t('tax_id'),
+  'address': t('address_home') if acc_type == 'individual' else t('address_legal'),
+  'passport': t('passport'), 'phone': t('phone')} %}
+<div class="wrap narrow section">
+  <a class="back" href="{{ url_for('account') }}">← {{ t('account') }}</a>
+  {% if errors %}<div class="flash flash-error" role="alert"><ul class="plain">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+  <div class="panel">
+    <h1>{{ t('edit_profile') }}</h1>
+    <p class="muted small">{{ t('email') }}: {{ g.user.email }}</p>
+    <form method="post" class="stack">
+      {{ csrf() }}
+      <input type="hidden" name="action" value="profile">
+      {% for name, required in fields %}
+        <label{% if name in missing %} class="invalid"{% endif %}>
+          <span>{{ labels[name] }}{% if required %} <span class="req">*</span>{% endif %}</span>
+          <input type="{{ 'tel' if 'phone' in name else 'text' }}" name="{{ name }}" value="{{ form.get(name) or '' }}" maxlength="300"{% if required %} required{% endif %}>
+        </label>
+      {% endfor %}
+      <label class="check"><input type="checkbox" name="notify_email" value="1"{% if form.get('notify_email') %} checked{% endif %}> <span>{{ t('notify_email') }}</span></label>
+      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+    </form>
+  </div>
+
+  <div class="panel panel-gap">
+    <h2>{{ t('change_password') }}</h2>
+    <form method="post" class="stack">
+      {{ csrf() }}
+      <input type="hidden" name="action" value="password">
+      <label>{{ t('current_password') }}<input type="password" name="current_password" autocomplete="current-password" required></label>
+      <label>{{ t('new_password') }}<input type="password" name="password" minlength="10" autocomplete="new-password" required>
+        <span class="small muted">{{ t('password_hint') }}</span></label>
+      <label>{{ t('password2') }}<input type="password" name="password2" minlength="10" autocomplete="new-password" required></label>
+      <button class="btn btn-ghost" type="submit">{{ t('change_password') }}</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('developers_title') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="wrap">
+    <h1>{{ t('developers_title') }}</h1>
+    <p class="lead">{{ t('developers_intro') }}</p>
+  </div>
+</div>
+<div class="wrap section">
+  {% if rows %}
+  <ul class="plain dev-list">
+    {% for r in rows %}
+    <li class="dev-card">
+      <a class="dev-name" href="{{ url_for('search', dev=r.developer_tj) }}">{{ r.developer_ru if lang == 'ru' and r.developer_ru else r.developer_tj }}</a>
+      <div class="dev-counts">
+        {% if r.open_now %}<a class="badge badge-consultation" href="{{ url_for('search', dev=r.developer_tj, status='consultation') }}">{{ r.open_now }} {{ t('dev_open') }}</a>{% endif %}
+        {% if r.plans %}<a class="kind-tag kind-tag-plan" href="{{ url_for('registry', slug='plans', dev=r.developer_tj) }}">{{ t('nav_plans') }}: {{ r.plans }}</a>{% endif %}
+        {% if r.drafts %}<a class="kind-tag kind-tag-draft" href="{{ url_for('registry', slug='drafts', dev=r.developer_tj) }}">{{ t('nav_drafts') }}: {{ r.drafts }}</a>{% endif %}
+        {% if r.acts %}<a class="kind-tag kind-tag-act" href="{{ url_for('registry', slug='acts', dev=r.developer_tj) }}">{{ t('nav_acts') }}: {{ r.acts }}</a>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="empty">{{ t('no_results') }}</p>{% endif %}
+</div>
+{% endblock %}

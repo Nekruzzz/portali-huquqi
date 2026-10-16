@@ -1,0 +1,65 @@
+{# Shared filter bar. Expects: statuses (list), years (list, optional), show_kind (bool) #}
+<form class="filters" method="get" role="search">
+  <div class="filter-q">
+    <label class="sr-only" for="fq">{{ t('nav_search') }}</label>
+    <input id="fq" name="q" type="search" value="{{ request.args.get('q', '') }}" placeholder="{{ t('search_placeholder') }}">
+  </div>
+  {% if show_kind %}
+  <label class="field-inline"><span>{{ t('kind_label') }}</span>
+    <select name="kind">
+      <option value="">{{ t('all') }}</option>
+      {% for k in KINDS %}<option value="{{ k }}"{% if request.args.get('kind') == k %} selected{% endif %}>{{ t('kind_' ~ k) }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  <label class="field-inline"><span>{{ t('filter_type') }}</span>
+    <select name="type">
+      <option value="">{{ t('all') }}</option>
+      {% for code, names in DOC_TYPES.items() %}<option value="{{ code }}"{% if request.args.get('type') == code %} selected{% endif %}>{{ names[lang] }}</option>{% endfor %}
+    </select>
+  </label>
+  {% if years %}
+  <label class="field-inline"><span>{{ t('filter_year') }}</span>
+    <select name="year">
+      <option value="">{{ t('all') }}</option>
+      {% for y in years %}<option{% if request.args.get('year') == y %} selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  {% if statuses %}
+  <label class="field-inline"><span>{{ t('filter_status') }}</span>
+    <select name="status">
+      <option value="">{{ t('all') }}</option>
+      {% for s in statuses %}<option value="{{ s }}"{% if request.args.get('status') == s %} selected{% endif %}>{{ t('st_' ~ s) }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  {% if developers %}
+  <label class="field-inline"><span>{{ t('developer') }}</span>
+    <select name="dev">
+      <option value="">{{ t('all') }}</option>
+      {% for d in developers %}<option{% if request.args.get('dev') == d %} selected{% endif %}>{{ d }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  {% if show_legal %}
+  <label class="field-inline"><span>{{ t('filter_legal') }}</span>
+    <select name="legal">
+      <option value="">{{ t('all') }}</option>
+      {% for s in LEGAL_STATUSES %}<option value="{{ s }}"{% if request.args.get('legal') == s %} selected{% endif %}>{{ t('legal_' ~ s) }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  <label class="field-inline"><span>{{ t('sort') }}</span>
+    <select name="sort">
+      <option value="new">{{ t('sort_new') }}</option>
+      <option value="old"{% if request.args.get('sort') == 'old' %} selected{% endif %}>{{ t('sort_old') }}</option>
+      {% if statuses %}<option value="closing"{% if request.args.get('sort') == 'closing' %} selected{% endif %}>{{ t('sort_closing') }}</option>{% endif %}
+    </select>
+  </label>
+  <label class="check filter-full"><input type="checkbox" name="fulltext" value="1"{% if request.args.get('fulltext') == '1' %} checked{% endif %}> <span>{{ t('fulltext') }}</span></label>
+  <div class="filter-actions">
+    <button class="btn btn-primary" type="submit">{{ t('filter_apply') }}</button>
+    {% if request.args %}<a class="btn btn-link" href="{{ request.path }}">{{ t('filter_reset') }}</a>{% endif %}
+  </div>
+</form>

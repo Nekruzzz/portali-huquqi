@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import pagination with context %}
+{% block title %}{{ t('news') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="wrap"><h1>{{ t('news') }}</h1></div>
+</div>
+<div class="wrap section">
+  {% if rows %}
+  <div class="news-grid">
+    {% for n in rows %}
+    <a class="news-card" href="{{ url_for('news_item', news_id=n.id) }}">
+      <time datetime="{{ n.created_at[:10] }}">{{ fmt_date(n.created_at) }}</time>
+      <strong>{{ L(n, 'title') }}</strong>
+      {% if L(n, 'body') %}<span>{{ L(n, 'body')|truncate(200) }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {{ pagination(page, pages) }}
+  {% else %}<p class="empty">{{ t('news_empty') }}</p>{% endif %}
+</div>
+{% endblock %}

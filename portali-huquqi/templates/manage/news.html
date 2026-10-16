@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('nav_news') }}{% endblock %}
+{% block content %}
+<div class="wrap section">
+  {% include 'manage/_nav.html' %}
+  <div class="section-head">
+    <h1>{{ t('news') }}</h1>
+    <a class="btn btn-primary" href="{{ url_for('edit_news') }}">+ {{ t('new_news') }}</a>
+  </div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>{{ t('date') }}</th><th>{{ t('field_title_tj') }}</th><th>{{ t('filter_status') }}</th></tr></thead>
+    <tbody>
+    {% for n in rows %}
+      <tr><td>{{ fmt_date(n.created_at) }}</td>
+        <td><a href="{{ url_for('edit_news', news_id=n.id) }}">{{ L(n, 'title') }}</a></td>
+        <td>{% if n.published %}<span class="badge badge-consultation">{{ t('field_published') }}</span>{% else %}<span class="badge badge-hidden">{{ t('draft_hidden') }}</span>{% endif %}</td></tr>
+    {% else %}
+      <tr><td colspan="3" class="empty">{{ t('news_empty') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

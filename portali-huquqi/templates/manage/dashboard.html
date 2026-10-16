@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('dashboard') }}{% endblock %}
+{% block content %}
+<div class="wrap section">
+  {% include 'manage/_nav.html' %}
+  <div class="section-head">
+    <h1>{{ t('dashboard') }}</h1>
+    <div class="row">
+      <a class="btn btn-primary" href="{{ url_for('edit_document', kind='plan') }}">+ {{ t('kind_plan') }}</a>
+      <a class="btn btn-primary" href="{{ url_for('edit_document', kind='draft') }}">+ {{ t('kind_draft') }}</a>
+      {% if g.user.role == 'admin' %}<a class="btn btn-primary" href="{{ url_for('edit_document', kind='act') }}">+ {{ t('kind_act') }}</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="stats">
+    {% for k in KINDS %}
+    <a class="stat kind-{{ k }}" href="{{ url_for('manage_documents', kind=k) }}"><strong>{{ stats[k] }}</strong><span>{{ t('nav_' ~ SLUG_OF_KIND[k]) }}</span></a>
+    {% endfor %}
+    <div class="stat"><strong>{{ awaiting|length }}</strong><span>{{ t('awaiting_response') }}</span></div>
+    {% if g.user.role == 'admin' %}
+    <a class="stat" href="{{ url_for('manage_users') }}"><strong>{{ pending_users|length }}</strong><span>{{ t('pending_users') }}</span></a>
+    <div class="stat"><strong>{{ awaiting_conclusion|length }}</strong><span>{{ t('awaiting_conclusion') }}</span></div>
+    <a class="stat" href="{{ url_for('manage_messages') }}"><strong>{{ new_messages }}</strong><span>{{ t('new_messages') }}</span></a>
+    {% endif %}
+  </div>
+
+  {% if returned %}
+  <section class="section-tight">
+    <div class="callout">
+      <h2>{{ t('returned_note') }}</h2>
+      <ul class="plain task-list">
+        {% for d in returned %}<li><a href="{{ url_for('edit_document', doc_id=d.id) }}">{{ L(d, 'title') }}</a><p class="small pre">{{ d.returned_note }}</p></li>{% endfor %}
+      </ul>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if g.user.role == 'admin' %}
+  <section class="section-tight">
+    <h2>{{ t('pending_users') }}</h2>
+    {% if pending_users %}
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>{{ t('full_name') }}</th><th>{{ t('kind_label') }}</th><th>{{ t('email') }}</th><th>{{ t('created') }}</th><th>{{ t('actions') }}</th></tr></thead>
+      <tbody>
+      {% for u in pending_users %}
+        <tr>
+          <td>{{ u.org_name or u.full_name }}{% if u.org_name %}<br><span class="small muted">{{ u.full_name }}</span>{% endif %}</td>
+          <td>{{ t('acc_' ~ u.account_type) }}</td>
+          <td>{{ u.email }}</td>
+          <td>{{ fmt_date(u.created_at) }}</td>
+          <td class="actions-cell">
+            <a class="btn btn-link" href="{{ url_for('user_application', user_id=u.id) }}" target="_blank" rel="noopener">{{ t('view_application') }}</a>
+            <form method="post" action="{{ url_for('update_user', user_id=u.id) }}">{{ csrf() }}
+              <input type="hidden" name="next" value="{{ request.path }}">
+              <button class="btn btn-primary btn-sm" name="action" value="approve">{{ t('approve') }}</button></form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="empty">{{ t('no_pending') }}</p>{% endif %}
+  </section>
+
+  <section class="section-tight">
+    <h2>{{ t('awaiting_conclusion') }}</h2>
+    {% if awaiting_conclusion %}
+    <ul class="plain task-list">
+      {% for d in awaiting_conclusion %}
+      <li><a href="{{ url_for('edit_document', doc_id=d.id) }}#decision">{{ L(d, 'title') }}</a>
+        <span class="small muted">{{ t('consult_end') }}: {{ fmt_date(d.consult_end) }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">{{ t('no_pending') }}</p>{% endif %}
+  </section>
+  {% endif %}
+
+  {% if g.user.role == 'admin' %}
+  <section class="section-tight">
+    <h2>{{ t('awaiting_act') }}</h2>
+    <p class="small muted">{{ t('awaiting_act_hint') }}</p>
+    {% if awaiting_act %}
+    <ul class="plain task-list">
+      {% for d in awaiting_act %}
+      <li><a href="{{ url_for('document', doc_id=d.id) }}">{{ L(d, 'title') }}</a>
+        <span class="small muted">{{ t('outcome_adopted') }}: {{ fmt_date(d.outcome_date) }}</span>
+        <a class="btn btn-link btn-sm" href="{{ url_for('edit_document', kind='act') }}">+ {{ t('kind_act') }}</a></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">{{ t('no_pending') }}</p>{% endif %}
+  </section>
+  {% endif %}
+
+  <section class="section-tight">
+    <h2>{{ t('awaiting_response') }}</h2>
+    {% if awaiting %}
+    <ul class="plain task-list">
+      {% for c in awaiting %}
+      <li>
+        <a href="{{ url_for('document', doc_id=c.document_id) }}#c{{ c.id }}">{{ c.title_ru if lang == 'ru' and c.title_ru else c.title_tj }}</a>
+        <p class="small"><strong>{{ display_name(c) }}:</strong> {{ c.body|truncate(160) }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">{{ t('no_pending') }}</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

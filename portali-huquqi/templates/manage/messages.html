@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('messages') }}{% endblock %}
+{% block content %}
+<div class="wrap section">
+  {% include 'manage/_nav.html' %}
+  <h1>{{ t('messages') }}</h1>
+  <nav class="tabs" aria-label="{{ t('filter_status') }}">
+    {% for s in ('new', 'answered', 'closed', 'all') %}
+      <a href="{{ url_for('manage_messages', status=s) }}"{% if status == s %} aria-current="page"{% endif %}>{{ t('msg_' ~ s) if s != 'all' else t('all') }}</a>
+    {% endfor %}
+  </nav>
+  {% if rows %}
+  <ul class="plain card-list">
+    {% for m in rows %}
+    <li class="doc-card">
+      <div class="doc-card-meta"><span class="badge badge-msg-{{ m.status }}">{{ t('msg_' ~ m.status) }}</span> <span>{{ m.created_at }}</span> <span>{{ m.name }} &lt;{{ m.email }}&gt;</span></div>
+      <h3 class="doc-card-title">{{ m.subject }}</h3>
+      <p class="pre">{{ m.body }}</p>
+      {% if m.answer %}<div class="response"><strong>{{ t('answer') }}</strong> ({{ m.answered_at }}): <span class="pre">{{ m.answer }}</span></div>{% endif %}
+      {% if m.status != 'closed' %}
+      <details class="respond"{% if m.status == 'new' %} open{% endif %}>
+        <summary>{{ t('answer') }}</summary>
+        <form method="post" action="{{ url_for('answer_message', msg_id=m.id) }}" class="stack">
+          {{ csrf() }}<input type="hidden" name="back" value="{{ status }}">
+          <textarea name="answer" rows="4" required>{{ m.answer or '' }}</textarea>
+          <div class="row">
+            <button class="btn btn-primary" type="submit">{{ t('send_answer') }}</button>
+            <button class="btn btn-ghost" type="submit" name="action" value="close" formnovalidate>{{ t('close') }}</button>
+          </div>
+        </form>
+      </details>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="empty">{{ t('no_pending') }}</p>{% endif %}
+</div>
+{% endblock %}

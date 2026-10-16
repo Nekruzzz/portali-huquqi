@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('login') }}{% endblock %}
+{% block content %}
+<div class="wrap narrow section">
+  <div class="panel">
+    <h1>{{ t('login_title') }}</h1>
+    <form method="post" class="stack">
+      {{ csrf() }}
+      <label>{{ t('email') }}<input type="email" name="email" value="{{ email or '' }}" autocomplete="username" required autofocus></label>
+      <label>{{ t('password') }}<input type="password" name="password" autocomplete="current-password" required></label>
+      <button class="btn btn-primary btn-block" type="submit">{{ t('login') }}</button>
+    </form>
+    <p class="center"><a href="{{ url_for('forgot') }}">{{ t('forgot') }}</a></p>
+    <p class="muted center">{{ t('no_account') }} <a href="{{ url_for('register') }}">{{ t('register') }}</a></p>
+  </div>
+</div>
+{% endblock %}

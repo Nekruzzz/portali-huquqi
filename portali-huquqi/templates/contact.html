@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('nav_contact') }}{% endblock %}
+{% block content %}
+<div class="wrap narrow section">
+  <div class="panel">
+    <h1>{{ t('contact_title') }}</h1>
+    <p class="muted">{{ t('contact_intro') }}</p>
+    {% if errors %}<div class="flash flash-error" role="alert"><ul class="plain">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+    <form method="post" class="stack">
+      {{ csrf() }}
+      <label>{{ t('name') }} <input type="text" name="name" value="{{ form.get('name') or '' }}" maxlength="200" autocomplete="name" required></label>
+      <label>{{ t('email') }} <input type="email" name="email" value="{{ form.get('email') or '' }}" maxlength="200" autocomplete="email" required></label>
+      <label>{{ t('subject') }} <input type="text" name="subject" value="{{ form.get('subject') or '' }}" maxlength="300" required></label>
+      <label>{{ t('message') }} <textarea name="body" rows="7" maxlength="3000" required class="js-count">{{ form.get('body') or '' }}</textarea></label>
+      <div class="hp" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+      <div class="row between">
+        <span class="small muted js-counter"></span>
+        <button class="btn btn-primary" type="submit">{{ t('comment_submit') }}</button>
+      </div>
+    </form>
+  </div>
+  <div class="panel panel-gap">
+    <h2>{{ t('contact') }}</h2>
+    <p>{{ contact_address }}{% if site.contact_phone %}<br>{{ site.contact_phone }}{% endif %}{% if site.contact_email %}<br><a href="mailto:{{ site.contact_email }}">{{ site.contact_email }}</a>{% endif %}</p>
+  </div>
+</div>
+{% endblock %}

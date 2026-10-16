@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="{{ 'tg' if lang == 'tj' else 'ru' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ t('site_name') }}{% endblock %} · {{ t('site_tagline') }}</title>
+  <meta name="description" content="{{ t('site_tagline') }}">
+  <meta name="color-scheme" content="light dark">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Serif:wght@500;600;700&display=swap&subset=cyrillic-ext">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="alternate" type="application/atom+xml" title="{{ t('feed') }}" href="{{ url_for('feed') }}">
+  <link rel="icon" href="{{ logo_url or url_for('static', filename='favicon.svg') }}">
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<a class="skip" href="#main">{{ t('skip') }}</a>
+
+<div class="topbar">
+  <div class="wrap topbar-in">
+    <span class="topbar-flag" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="topbar-text">{{ t('site_tagline') }}</span>
+    <div class="a11y" role="group" aria-label="{{ t('a11y_label') }}">
+      <button type="button" class="js-font" data-step="-1" aria-label="{{ t('font_smaller') }}" title="{{ t('font_smaller') }}">A−</button>
+      <button type="button" class="js-font" data-step="1" aria-label="{{ t('font_larger') }}" title="{{ t('font_larger') }}">A+</button>
+      <button type="button" class="js-contrast" aria-pressed="false" aria-label="{{ t('contrast') }}" title="{{ t('contrast') }}">
+        <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>
+      </button>
+    </div>
+    <nav class="lang" aria-label="{{ t('lang_label') }}">
+      {% for code, name in LANGS.items() %}
+        <a href="{{ url_for('set_lang', code=code, next=request.full_path) }}"{% if code == lang %} aria-current="true"{% endif %} lang="{{ 'tg' if code == 'tj' else 'ru' }}">{{ name }}</a>
+      {% endfor %}
+    </nav>
+  </div>
+</div>
+
+<header class="site-header">
+  <div class="wrap header-in">
+    <a class="brand" href="{{ url_for('index') }}">
+      {% if logo_url %}
+        <img class="brand-logo" src="{{ logo_url }}" alt="">
+      {% else %}
+        <span class="brand-mark" aria-hidden="true">§</span>
+      {% endif %}
+      <span class="brand-text"><strong>{{ t('site_name') }}</strong><small>{{ operator or 'portali-huquqi.tj' }}</small></span>
+    </a>
+    {% set ep = request.endpoint %}
+    {% set slug = request.view_args.get('slug') if request.view_args else None %}
+    <nav class="main-nav" aria-label="{{ t('menu') }}">
+      <a href="{{ url_for('registry', slug='plans') }}"{% if slug == 'plans' %} aria-current="page"{% endif %}>{{ t('nav_plans') }}</a>
+      <a href="{{ url_for('registry', slug='drafts') }}"{% if slug == 'drafts' %} aria-current="page"{% endif %}>{{ t('nav_drafts') }}</a>
+      <a href="{{ url_for('registry', slug='acts') }}"{% if slug == 'acts' %} aria-current="page"{% endif %}>{{ t('nav_acts') }}</a>
+      <a href="{{ url_for('news_list') }}"{% if ep in ('news_list', 'news_item') %} aria-current="page"{% endif %}>{{ t('nav_news') }}</a>
+      <a href="{{ url_for('stats') }}"{% if ep == 'stats' %} aria-current="page"{% endif %}>{{ t('nav_stats') }}</a>
+    </nav>
+    <div class="header-actions">
+      <a class="icon-btn" href="{{ url_for('search') }}" aria-label="{{ t('nav_search') }}" title="{{ t('nav_search') }}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </a>
+      {% if g.user %}
+        {% if g.user.role in ('developer', 'admin') and g.user.status == 'active' %}
+          <a class="btn btn-ghost hide-sm" href="{{ url_for('manage') }}">{{ t('manage') }}</a>
+        {% endif %}
+        <a class="btn btn-ghost hide-sm" href="{{ url_for('account') }}">{{ t('account') }}</a>
+        <form method="post" action="{{ url_for('logout') }}" class="hide-sm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-link" type="submit">{{ t('logout') }}</button>
+        </form>
+      {% else %}
+        <a class="btn btn-ghost hide-sm" href="{{ url_for('login') }}">{{ t('login') }}</a>
+        <a class="btn btn-primary hide-sm" href="{{ url_for('register') }}">{{ t('register') }}</a>
+      {% endif %}
+      <details class="mobile-menu">
+        <summary class="icon-btn" aria-label="{{ t('menu') }}">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </summary>
+        <div class="mobile-panel">
+          <a href="{{ url_for('registry', slug='plans') }}">{{ t('nav_plans') }}</a>
+          <a href="{{ url_for('registry', slug='drafts') }}">{{ t('nav_drafts') }}</a>
+          <a href="{{ url_for('registry', slug='acts') }}">{{ t('nav_acts') }}</a>
+          <a href="{{ url_for('search') }}">{{ t('nav_search') }}</a>
+          <a href="{{ url_for('news_list') }}">{{ t('nav_news') }}</a>
+          <a href="{{ url_for('developers') }}">{{ t('nav_developers') }}</a>
+          <a href="{{ url_for('stats') }}">{{ t('nav_stats') }}</a>
+          <a href="{{ url_for('about') }}">{{ t('nav_about') }}</a>
+          <a href="{{ url_for('contact') }}">{{ t('nav_contact') }}</a>
+          <hr>
+          {% if g.user %}
+            {% if g.user.role in ('developer', 'admin') and g.user.status == 'active' %}<a href="{{ url_for('manage') }}">{{ t('manage') }}</a>{% endif %}
+            <a href="{{ url_for('account') }}">{{ t('account') }}</a>
+            <form method="post" action="{{ url_for('logout') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="linklike" type="submit">{{ t('logout') }}</button>
+            </form>
+          {% else %}
+            <a href="{{ url_for('login') }}">{{ t('login') }}</a>
+            <a href="{{ url_for('register') }}">{{ t('register') }}</a>
+          {% endif %}
+        </div>
+      </details>
+    </div>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="wrap flashes" role="status">
+        {% for cat, msg in messages %}<div class="flash flash-{{ cat }}">{{ msg }}</div>{% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div>
+      <p class="footer-brand">
+        {% if logo_url %}<img class="footer-logo" src="{{ logo_url }}" alt="">{% else %}<span class="brand-mark sm" aria-hidden="true">§</span>{% endif %}
+        {{ t('site_tagline') }}</p>
+      {% if operator %}<p class="small">{{ t('operator') }}: {{ operator }}</p>{% endif %}
+      <p class="muted">{{ t('footer_free') }}</p>
+    </div>
+    <div>
+      <h2 class="footer-h">{{ t('legal_basis') }}</h2>
+      <ul class="plain small">
+        <li>{{ t('lb_1') }}</li>
+        <li>{{ t('lb_2') }}</li>
+      </ul>
+      <ul class="plain small footer-links">
+        <li><a href="{{ url_for('developers') }}">{{ t('nav_developers') }}</a></li>
+        <li><a href="{{ url_for('stats') }}">{{ t('nav_stats') }}</a></li>
+        <li><a href="{{ url_for('news_list') }}">{{ t('nav_news') }}</a></li>
+        <li><a href="{{ url_for('about') }}">{{ t('nav_about') }}</a></li>
+      </ul>
+    </div>
+    <div>
+      <h2 class="footer-h">{{ t('contact') }}</h2>
+      <p class="small">{{ contact_address }}
+        {% if site.contact_phone %}<br>{{ site.contact_phone }}{% endif %}
+        {% if site.contact_email %}<br><a href="mailto:{{ site.contact_email }}">{{ site.contact_email }}</a>{% endif %}</p>
+      <ul class="plain small">
+        <li><a href="{{ url_for('contact') }}">{{ t('nav_contact') }}</a></li>
+        <li><a href="{{ url_for('feed') }}">{{ t('feed') }}</a></li>
+        <li><a href="{{ url_for('api_documents') }}">{{ t('open_data') }}</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{% set ep = request.endpoint %}
+<nav class="subnav" aria-label="{{ t('manage') }}">
+  <a href="{{ url_for('manage') }}"{% if ep == 'manage' %} aria-current="page"{% endif %}>{{ t('dashboard') }}</a>
+  <a href="{{ url_for('manage_documents') }}"{% if ep in ('manage_documents', 'edit_document') %} aria-current="page"{% endif %}>{{ t('documents') }}</a>
+  {% if g.user.role == 'admin' %}
+  <a href="{{ url_for('manage_users') }}"{% if ep == 'manage_users' %} aria-current="page"{% endif %}>{{ t('users') }}</a>
+  <a href="{{ url_for('manage_messages') }}"{% if ep == 'manage_messages' %} aria-current="page"{% endif %}>{{ t('messages') }}</a>
+  <a href="{{ url_for('manage_news') }}"{% if ep in ('manage_news', 'edit_news') %} aria-current="page"{% endif %}>{{ t('nav_news') }}</a>
+  <a href="{{ url_for('manage_import') }}"{% if ep == 'manage_import' %} aria-current="page"{% endif %}>{{ t('import') }}</a>
+  <a href="{{ url_for('manage_settings') }}"{% if ep == 'manage_settings' %} aria-current="page"{% endif %}>{{ t('settings') }}</a>
+  <a href="{{ url_for('manage_audit') }}"{% if ep == 'manage_audit' %} aria-current="page"{% endif %}>{{ t('audit') }}</a>
+  {% endif %}
+  <span class="subnav-role">{{ t('role_' ~ g.user.role) }}</span>
+</nav>

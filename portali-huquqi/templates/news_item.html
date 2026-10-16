@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}{{ L(n, 'title')|truncate(80) }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="wrap">
+    <nav class="crumbs"><a href="{{ url_for('index') }}">{{ t('nav_home') }}</a> / <a href="{{ url_for('news_list') }}">{{ t('nav_news') }}</a></nav>
+    <p class="eyebrow"><time datetime="{{ n.created_at[:10] }}">{{ fmt_date(n.created_at) }}</time></p>
+    <h1 class="doc-title">{{ L(n, 'title') }}</h1>
+  </div>
+</div>
+<div class="wrap section prose">
+  {% for b in blocks %}
+    {% if b.type == 'h' %}<h3>{{ b.text }}</h3>{% else %}<p class="pre">{{ b.text }}</p>{% endif %}
+  {% endfor %}
+  {% if g.user and g.user.role == 'admin' %}<p><a class="btn btn-ghost" href="{{ url_for('edit_news', news_id=n.id) }}">{{ t('edit') }}</a></p>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('edit') if doc else t('new_document') }}{% endblock %}
+{% block content %}
+{% macro tf(name, label, type='text', required=false, hint='') -%}
+  <label><span>{{ label }}{% if required %} <span class="req">*</span>{% endif %}</span>
+    <input type="{{ type }}" name="{{ name }}" value="{{ form.get(name) or '' }}"{% if required %} required{% endif %}>
+    {% if hint %}<span class="small muted">{{ hint }}</span>{% endif %}
+  </label>
+{%- endmacro %}
+{% macro ta(name, label, rows=3) -%}
+  <label><span>{{ label }}</span><textarea name="{{ name }}" rows="{{ rows }}">{{ form.get(name) or '' }}</textarea></label>
+{%- endmacro %}
+
+{% set kind = form.get('kind') %}
+<div class="wrap section">
+  {% include 'manage/_nav.html' %}
+  <div class="section-head">
+    <h1>{{ t('edit') if doc else t('new_document') }}{% if doc %} <span class="muted">#{{ doc.id }}</span>{% endif %}</h1>
+    {% if doc %}<a class="btn btn-ghost" href="{{ url_for('document', doc_id=doc.id) }}">{{ t('view_public') }} →</a>{% endif %}
+  </div>
+  {% if doc and doc.returned_note %}
+    <div class="callout callout-danger"><strong>{{ t('returned_note') }}:</strong> <span class="pre">{{ doc.returned_note }}</span></div>
+  {% endif %}
+  {% if errors %}<div class="flash flash-error" role="alert"><ul class="plain">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="edit-form js-kind-form" data-kind="{{ kind }}">
+    {{ csrf() }}
+    <fieldset>
+      <legend>{{ t('section_main') }}</legend>
+      <div class="grid-2">
+        <label><span>{{ t('field_kind') }}</span>
+          {% if doc %}
+            <input type="text" value="{{ t('kind_' ~ kind) }}" disabled>
+          {% else %}
+            <select name="kind" class="js-kind">
+              {% for k in allowed_kinds %}<option value="{{ k }}"{% if k == kind %} selected{% endif %}>{{ t('reg_title_' ~ k) }}</option>{% endfor %}
+            </select>
+          {% endif %}
+        </label>
+        <label><span>{{ t('filter_type') }}</span>
+          <select name="doc_type">
+            <option value=""></option>
+            {% for code, names in DOC_TYPES.items() %}<option value="{{ code }}"{% if form.get('doc_type') == code %} selected{% endif %}>{{ names[lang] }}</option>{% endfor %}
+          </select>
+        </label>
+        {{ tf('number', t('number')) }}
+        {{ tf('doc_date', t('date'), 'date', hint=t('date_adopted') ~ ' / ' ~ t('date_posted')) }}
+      </div>
+      {{ tf('title_tj', t('field_title_tj'), required=true) }}
+      {{ tf('title_ru', t('field_title_ru')) }}
+      <div class="grid-2">
+        {{ tf('developer_tj', t('field_developer_tj')) }}
+        {{ tf('developer_ru', t('field_developer_ru')) }}
+      </div>
+      <div class="grid-2">
+        {{ tf('related_id', t('field_related'), 'number', hint=t('field_related_hint')) }}
+        {{ tf('source_url', t('field_source'), 'url') }}
+      </div>
+      <div class="grid-2">
+        {{ ta('summary_tj', t('field_summary_tj')) }}
+        {{ ta('summary_ru', t('field_summary_ru')) }}
+      </div>
+      <label class="check"><input type="checkbox" name="published" value="1"{% if form.get('published') %} checked{% endif %}> <span>{{ t('field_published') }}</span></label>
+    </fieldset>
+
+    <fieldset class="only-act">
+      <legend>{{ t('section_act') }}</legend>
+      <div class="grid-2">
+        <label><span>{{ t('filter_legal') }}</span>
+          <select name="legal_status">
+            {% for ls in LEGAL_STATUSES %}<option value="{{ ls }}"{% if (form.get('legal_status') or 'in_force') == ls %} selected{% endif %}>{{ t('legal_' ~ ls) }}</option>{% endfor %}
+          </select>
+        </label>
+        {{ tf('effective_date', t('effective_date'), 'date') }}
+        {{ tf('publication_tj', t('field_publication_tj')) }}
+        {{ tf('publication_ru', t('field_publication_ru')) }}
+        {{ tf('mj_reg_number', t('field_mj_number')) }}
+        {{ tf('mj_reg_date', t('field_mj_date'), 'date') }}
+        {{ tf('amends', t('field_amends')) }}
+        {{ tf('repeals', t('field_repeals')) }}
+      </div>
+    </fieldset>
+
+    <fieldset class="only-consult">
+      <legend>{{ t('section_dates') }}</legend>
+      <p class="small muted">{{ t('err_consult_30') }}</p>
+      <div class="grid-2">
+        {{ tf('consult_start', t('consult_start'), 'date') }}
+        {{ tf('consult_end', t('consult_end'), 'date') }}
+        {{ tf('dev_deadline', t('dev_deadline'), 'date') }}
+        {{ tf('adopt_deadline', t('adopt_deadline'), 'date') }}
+      </div>
+    </fieldset>
+
+    <fieldset class="only-consult">
+      <legend>{{ t('section_details') }}</legend>
+      <label class="check only-plan"><input type="checkbox" name="affects_business" value="1" class="js-business"{% if form.get('affects_business') %} checked{% endif %}> <span>{{ t('field_business') }}</span></label>
+      {% set det = form.get('details') or {} %}
+      {% for key in DETAIL_FIELDS %}
+        {% set cls = 'det-always' if key == 'affected' else ('det-business' if key in BUSINESS_FIELDS else 'det-ria') %}
+        <div class="detail-pair {{ cls }}">
+          <p class="detail-pair-label">{{ detail_label(key) }}</p>
+          <div class="grid-2">
+            {% for lg in LANGS %}
+              <label><span class="small muted">{{ LANGS[lg] }}</span>
+                <textarea name="d_{{ key }}_{{ lg }}" rows="2">{{ (det.get(key) or {}).get(lg, '') }}</textarea></label>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t('section_texts') }}</legend>
+      {{ ta('body_tj', t('field_body_tj'), 12) }}
+      {{ ta('body_ru', t('field_body_ru'), 12) }}
+      <label><span>{{ t('field_files') }}</span><input type="file" name="files" multiple accept=".pdf,.doc,.docx,.odt,.rtf"></label>
+      {% if attachments %}
+      <ul class="plain file-admin">
+        {% for a in attachments %}
+          <li><a href="{{ url_for('download', stored_name=a.stored_name) }}">{{ a.original_name }}</a>
+            <span class="small muted">{{ (a.size / 1024)|round|int }} KB</span>
+            <button class="btn btn-link danger" type="submit" form="del-att-{{ a.id }}">{{ t('remove_file') }}</button></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </fieldset>
+
+    <fieldset id="decision" class="only-consult">
+      <legend>{{ t('section_decision') }}</legend>
+      {% if g.user.role == 'admin' %}
+        <div class="grid-2">
+          {{ ta('conclusion_tj', t('conclusion') ~ ' (TJ)', 4) }}
+          {{ ta('conclusion_ru', t('conclusion') ~ ' (RU)', 4) }}
+        </div>
+        {{ tf('conclusion_date', t('date'), 'date') }}
+      {% else %}
+        <p class="small muted">{{ t('conclusion_only_admin') }}</p>
+        {% if form.get('conclusion_tj') %}<p class="pre">{{ form.get('conclusion_tj') }}</p>{% endif %}
+      {% endif %}
+      <div class="grid-2">
+        <label><span>{{ t('outcome') }}</span>
+          <select name="outcome">
+            <option value="">—</option>
+            {% for o in ('proceed', 'adopted', 'rejected') %}<option value="{{ o }}"{% if form.get('outcome') == o %} selected{% endif %}>{{ t('outcome_' ~ o) }}</option>{% endfor %}
+          </select>
+        </label>
+        {{ tf('outcome_date', t('date'), 'date') }}
+      </div>
+      <div class="grid-2">
+        {{ ta('outcome_note_tj', t('outcome') ~ ' (TJ)') }}
+        {{ ta('outcome_note_ru', t('outcome') ~ ' (RU)') }}
+      </div>
+    </fieldset>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+      {% if doc %}<button class="btn btn-ghost danger" type="submit" form="del-doc">{{ t('delete') }}</button>{% endif %}
+      {% if doc and comment_count %}<a class="btn btn-ghost" href="{{ url_for('proposals_csv', doc_id=doc.id) }}">{{ t('export_csv') }} ({{ comment_count }})</a>{% endif %}
+    </div>
+  </form>
+
+  {% if doc and g.user.role == 'admin' and doc.kind != 'act' %}
+  <form method="post" action="{{ url_for('return_document', doc_id=doc.id) }}" class="edit-form return-form">
+    {{ csrf() }}
+    <fieldset>
+      <legend>{{ t('return_doc') }}</legend>
+      <label><span>{{ t('return_reason') }}</span><textarea name="reason" rows="3" required></textarea></label>
+      <div><button class="btn btn-ghost danger" type="submit">{{ t('return_doc') }}</button></div>
+    </fieldset>
+  </form>
+  {% endif %}
+
+  {% if doc %}
+  <form id="del-doc" method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}" class="js-confirm" data-confirm="{{ t('confirm_delete') }}">{{ csrf() }}</form>
+  {% for a in attachments %}
+  <form id="del-att-{{ a.id }}" method="post" action="{{ url_for('delete_attachment', att_id=a.id) }}" class="js-confirm" data-confirm="{{ t('confirm_delete') }}">{{ csrf() }}</form>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

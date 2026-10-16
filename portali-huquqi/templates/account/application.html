@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="{{ 'tg' if lang == 'tj' else 'ru' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ t('application_word') }} — {{ u.org_name or u.full_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='application.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+<div class="toolbar no-print">
+  <span>{{ t('print_hint') }}</span>
+  <button type="button" class="js-print">{{ t('print') }}</button>
+</div>
+<div class="sheet">
+  <p class="annex">{{ t('annex') }} {{ annex }}<br>{{ t('annex_to') }}<br><strong>{{ t('form_for_' ~ u.account_type) }}</strong></p>
+
+  <h1>{{ t('application_word') }}<br><span>{{ t('application_title')|replace(t('application_word') ~ ' ', '') }}</span></h1>
+
+  {% macro line(value, caption) -%}
+    <div class="fill"><span class="val">{{ value or '' }}</span></div>
+    <p class="cap">({{ caption }})</p>
+  {%- endmacro %}
+
+  {% if u.account_type == 'individual' %}
+    {{ line((u.position ~ ', ' if u.position else '') ~ u.full_name, t('position') ~ ', ' ~ t('full_name')|lower) }}
+    <p class="para">{{ t('application_body') }}</p>
+    <table class="data">
+      <tr><th>{{ t('full_name') }}</th><td>{{ u.full_name }}</td></tr>
+      <tr><th>{{ t('workplace') }}</th><td>{{ u.workplace or '' }}</td></tr>
+      <tr><th>{{ t('email') }}</th><td>{{ u.email }}</td></tr>
+      <tr><th>{{ t('phone') }}</th><td>{{ u.phone or '' }}</td></tr>
+      <tr><th>{{ t('tax_id') }}</th><td>{{ u.tax_id or '' }}</td></tr>
+      <tr><th>{{ t('address_home') }}</th><td>{{ u.address or '' }}</td></tr>
+    </table>
+  {% else %}
+    {{ line(u.org_name, t('org_name')) }}
+    <p class="para"><em>{{ t('in_person_of') }}</em></p>
+    {{ line(u.head_name, t('position') ~ ', ' ~ t('full_name')|lower) }}
+    {% if u.account_type == 'legal_entity' %}
+      <p class="para"><em>{{ t('acting_on') }}</em> <span class="inline-fill">{{ u.authority_basis or '' }}</span> <em>{{ t('acting_on_end') }}</em></p>
+    {% endif %}
+    <p class="para">{{ t('for_rep') }}</p>
+    {{ line((u.position ~ ', ' if u.position else '') ~ u.full_name, t('position') ~ ', ' ~ t('full_name')|lower) }}
+    <p class="para">{{ t('for_rep_end') }}</p>
+    <table class="data">
+      <tr><th>{{ t('org_name') }}</th><td>{{ u.org_name or '' }}</td></tr>
+      <tr><th>{{ t('org_activity') }}</th><td>{{ u.org_activity or '' }}</td></tr>
+      <tr><th>{{ t('email') }}</th><td>{{ u.email }}</td></tr>
+      <tr><th>{{ t('head_name') }}</th><td>{{ u.head_name or '' }}</td></tr>
+      <tr><th>{{ t('head_phone') }}</th><td>{{ u.head_phone or '' }}</td></tr>
+      <tr><th>{{ t('tax_id') }}</th><td>{{ u.tax_id or '' }}</td></tr>
+      <tr><th>{{ t('address_legal') }}</th><td>{{ u.address or '' }}</td></tr>
+    </table>
+  {% endif %}
+
+  {{ line(u.full_name, t('full_name')) }}
+  {{ line(u.passport, t('passport')) }}
+  {{ line((u.phone or '') ~ (', ' if u.phone else '') ~ u.email, t('rep_contacts')) }}
+
+  <div class="signs">
+    <div class="sign"><span class="who">{{ t('signature_user') }}</span><span class="sig">______________________ / ______________ /</span>
+      <span class="date">{% if u.account_type != 'individual' %}{{ t('stamp') }} &nbsp;{% endif %}"___" ______________ с. 20___</span></div>
+    {% if u.account_type != 'individual' %}
+    <div class="sign"><span class="who">{{ t('signature_head') }}</span><span class="sig">______________________ / ______________ /</span>
+      <span class="date">"___" ______________ с. 20___</span></div>
+    {% endif %}
+  </div>
+  <p class="foot">portali-huquqi.tj · ID {{ u.id }} · {{ fmt_date(u.created_at) }}</p>
+</div>
+</body>
+</html>

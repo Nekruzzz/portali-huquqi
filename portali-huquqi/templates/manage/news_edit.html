@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('nav_news') }}{% endblock %}
+{% block content %}
+<div class="wrap section">
+  {% include 'manage/_nav.html' %}
+  <h1>{{ t('edit') if n else t('new_news') }}</h1>
+  <form method="post" class="edit-form">
+    {{ csrf() }}
+    <fieldset>
+      <legend>{{ t('section_main') }}</legend>
+      <label><span>{{ t('field_title_tj') }} <span class="req">*</span></span><input type="text" name="title_tj" value="{{ form.get('title_tj') or '' }}" required></label>
+      <label><span>{{ t('field_title_ru') }}</span><input type="text" name="title_ru" value="{{ form.get('title_ru') or '' }}"></label>
+      <label><span>{{ t('message') }} (TJ)</span><textarea name="body_tj" rows="10">{{ form.get('body_tj') or '' }}</textarea></label>
+      <label><span>{{ t('message') }} (RU)</span><textarea name="body_ru" rows="10">{{ form.get('body_ru') or '' }}</textarea></label>
+      <label class="check"><input type="checkbox" name="published" value="1"{% if form.get('published') %} checked{% endif %}> <span>{{ t('field_published') }}</span></label>
+    </fieldset>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+      {% if n %}<button class="btn btn-ghost danger" type="submit" name="action" value="delete" formnovalidate>{{ t('delete') }}</button>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

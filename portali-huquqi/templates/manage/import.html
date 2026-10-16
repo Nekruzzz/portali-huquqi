@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('import') }}{% endblock %}
+{% block content %}
+<div class="wrap section">
+  {% include 'manage/_nav.html' %}
+  <h1>{{ t('import_title') }}</h1>
+  <form method="post" enctype="multipart/form-data" class="edit-form">
+    {{ csrf() }}
+    <fieldset>
+      <legend>{{ t('import_file') }}</legend>
+      <p class="small muted">{{ t('import_hint') }}</p>
+      <label><span>{{ t('import_file') }}</span><input type="file" name="file" accept=".csv,text/csv" required></label>
+      <pre class="code-sample">kind,doc_type,number,doc_date,title_tj,title_ru,developer_tj,legal_status
+act,law,1414,2017-05-30,"Қонуни ҶТ «Дар бораи санадҳои меъёрии ҳуқуқӣ»","Закон РТ «О нормативных правовых актах»","Маҷлиси Олӣ",in_force</pre>
+    </fieldset>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">{{ t('import_btn') }}</button></div>
+  </form>
+</div>
+{% endblock %}

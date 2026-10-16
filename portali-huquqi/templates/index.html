@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import doc_card, status_badge with context %}
+{% block title %}{{ t('nav_home') }}{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="wrap hero-in">
+    <h1 class="hero-title">{{ t('hero_title') }}</h1>
+    <p class="hero-text">{{ t('hero_text') }}</p>
+    <form class="hero-search" action="{{ url_for('search') }}" role="search">
+      <label class="sr-only" for="hq">{{ t('nav_search') }}</label>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="hq" name="q" type="search" placeholder="{{ t('search_placeholder') }}" autocomplete="off">
+      <button class="btn btn-primary" type="submit">{{ t('search_btn') }}</button>
+    </form>
+  </div>
+</section>
+
+<section class="wrap registers" aria-label="{{ t('kind_label') }}">
+  {% for kind in KINDS %}
+  <a class="register-card kind-{{ kind }}" href="{{ url_for('registry', slug=SLUG_OF_KIND[kind]) }}">
+    <span class="register-step">{{ loop.index }}</span>
+    <h2>{{ t('reg_title_' ~ kind) }}</h2>
+    <p>{{ t('reg_desc_' ~ kind) }}</p>
+    <span class="register-count"><strong>{{ counts[kind] }}</strong> {{ t('count_docs') }} →</span>
+  </a>
+  {% endfor %}
+</section>
+
+<section class="wrap section">
+  <div class="section-head">
+    <h2>{{ t('open_now') }}</h2>
+    <a href="{{ url_for('search', status='consultation', sort='closing') }}">{{ t('all') }} →</a>
+  </div>
+  {% if open_now %}
+    <div class="card-grid">
+      {% for d in open_now %}{{ doc_card(d, show_kind=true) }}{% endfor %}
+    </div>
+  {% else %}
+    <p class="empty">{{ t('open_now_empty') }}</p>
+  {% endif %}
+</section>
+
+<section class="section process">
+  <div class="wrap">
+    <h2>{{ t('how_title') }}</h2>
+    <ol class="steps">
+      {% for i in range(1, 6) %}
+      <li><span class="step-n">{{ i }}</span><h3>{{ t('how_' ~ i ~ '_t') }}</h3><p>{{ t('how_' ~ i ~ '_d') }}</p></li>
+      {% endfor %}
+    </ol>
+  </div>
+</section>
+
+{% if news %}
+<section class="wrap section">
+  <div class="section-head">
+    <h2>{{ t('news') }}</h2>
+    <a href="{{ url_for('news_list') }}">{{ t('news_all') }} →</a>
+  </div>
+  <div class="news-grid">
+    {% for n in news %}
+    <a class="news-card" href="{{ url_for('news_item', news_id=n.id) }}">
+      <time datetime="{{ n.created_at[:10] }}">{{ fmt_date(n.created_at) }}</time>
+      <strong>{{ L(n, 'title') }}</strong>
+      {% if L(n, 'body') %}<span>{{ L(n, 'body')|truncate(140) }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="wrap section">
+  <div class="section-head">
+    <h2>{{ t('latest_acts') }}</h2>
+    <a href="{{ url_for('registry', slug='acts') }}">{{ t('all') }} →</a>
+  </div>
+  <ul class="act-list">
+    {% for d in latest_acts %}
+    <li>
+      <a href="{{ url_for('document', doc_id=d.id) }}">
+        <span class="act-meta">{{ doc_type_label(d.doc_type) }}{% if d.number %} · № {{ d.number }}{% endif %} · {{ fmt_date(d.doc_date) }}</span>
+        <span class="act-title">{{ L(d, 'title') }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

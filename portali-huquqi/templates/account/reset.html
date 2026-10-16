@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block title %}{{ t('reset_title') }}{% endblock %}
+{% block content %}
+<div class="wrap narrow section">
+  <div class="panel">
+    <h1>{{ t('reset_title') }}</h1>
+    <form method="post" class="stack">
+      {{ csrf() }}
+      <label>{{ t('new_password') }}<input type="password" name="password" minlength="10" autocomplete="new-password" required autofocus>
+        <span class="small muted">{{ t('password_hint') }}</span></label>
+      <label>{{ t('password2') }}<input type="password" name="password2" minlength="10" autocomplete="new-password" required></label>
+      <button class="btn btn-primary btn-block" type="submit">{{ t('save') }}</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

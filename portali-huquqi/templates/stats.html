@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('stats_title') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="wrap">
+    <h1>{{ t('stats_title') }}</h1>
+  </div>
+</div>
+<div class="wrap section">
+  <div class="stats">
+    {% for k in KINDS %}
+    <a class="stat kind-{{ k }}" href="{{ url_for('registry', slug=SLUG_OF_KIND[k]) }}"><strong>{{ counts[k] }}</strong><span>{{ t('nav_' ~ SLUG_OF_KIND[k]) }}</span></a>
+    {% endfor %}
+    <a class="stat" href="{{ url_for('search', status='consultation') }}"><strong>{{ open_now }}</strong><span>{{ t('stats_open') }}</span></a>
+    <div class="stat"><strong>{{ c.total or 0 }}</strong><span>{{ t('stats_proposals') }}</span></div>
+    <div class="stat"><strong>{{ pct(c.answered) }}%</strong><span>{{ t('stats_answered') }}</span></div>
+    <div class="stat"><strong>{{ pct(c.accepted) }}%</strong><span>{{ t('stats_accepted') }}</span></div>
+    <div class="stat"><strong>{{ users }}</strong><span>{{ t('stats_users') }}</span></div>
+  </div>
+
+  <div class="stats-grid">
+    <section class="doc-section">
+      <h2>{{ t('stats_decisions') }}</h2>
+      {% set rows = [('accepted', c.full_n or 0), ('partial', c.partial or 0), ('rejected', c.rejected or 0), ('none', (c.total or 0) - (c.answered or 0))] %}
+      <ul class="plain bars">
+        {% for key, n in rows %}
+        <li>
+          <span class="bar-label">{{ t('decision_' ~ key) }}</span>
+          <svg class="bar bar-d-{{ key }}" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><rect width="100" height="10" class="bar-bg"/><rect width="{{ pct(n) }}" height="10" class="bar-fg"/></svg>
+          <span class="bar-n">{{ n }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="doc-section">
+      <h2>{{ t('stats_by_year') }}</h2>
+      {% if by_year %}
+      <ul class="plain bars">
+        {% for r in by_year %}
+        <li>
+          <a class="bar-label" href="{{ url_for('registry', slug='acts', year=r.y) }}">{{ r.y }}</a>
+          <svg class="bar" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><rect width="100" height="10" class="bar-bg"/><rect width="{{ (100 * r.n / max_year)|round(1) }}" height="10" class="bar-fg"/></svg>
+          <span class="bar-n">{{ r.n }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="empty">{{ t('no_results') }}</p>{% endif %}
+    </section>
+  </div>
+
+  <section class="doc-section">
+    <h2>{{ t('stats_by_dev') }}</h2>
+    {% if by_dev %}
+    <ul class="plain bars bars-wide">
+      {% for r in by_dev %}
+      <li>
+        <a class="bar-label" href="{{ url_for('search', dev=r.developer_tj) }}">{{ r.developer_ru if lang == 'ru' and r.developer_ru else r.developer_tj }}</a>
+        <svg class="bar" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><rect width="100" height="10" class="bar-bg"/><rect width="{{ (100 * r.n / max_dev)|round(1) }}" height="10" class="bar-fg"/></svg>
+        <span class="bar-n">{{ r.n }} · {{ r.proposals }} {{ t('comments_count') }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">{{ t('no_results') }}</p>{% endif %}
+  </section>
+</div>
+{% endblock %}
