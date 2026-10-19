@@ -106,8 +106,14 @@
 <main id="main" tabindex="-1">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-      <div class="wrap flashes" role="status">
-        {% for cat, msg in messages %}<div class="flash flash-{{ cat }}">{{ msg }}</div>{% endfor %}
+      <div class="flashes toasts" role="status" aria-live="polite">
+        {% for cat, msg in messages %}
+        <div class="flash flash-{{ cat }} toast" data-autohide="{{ '0' if cat == 'error' else '1' }}">
+          <span class="toast-icon" aria-hidden="true">{% if cat == 'error' %}!{% else %}✓{% endif %}</span>
+          <span class="toast-text">{{ msg }}</span>
+          <button type="button" class="toast-close js-toast-close" aria-label="{{ t('dismiss') }}">×</button>
+        </div>
+        {% endfor %}
       </div>
     {% endif %}
   {% endwith %}

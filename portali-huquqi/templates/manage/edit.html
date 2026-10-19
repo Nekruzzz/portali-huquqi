@@ -38,6 +38,12 @@
             </select>
           {% endif %}
         </label>
+        <label><span>{{ t('topic') }}</span>
+          <select name="topic">
+            <option value=""></option>
+            {% for slug in TOPICS %}<option value="{{ slug }}"{% if form.get('topic') == slug %} selected{% endif %}>{{ topic_label(slug) }}</option>{% endfor %}
+          </select>
+        </label>
         <label><span>{{ t('filter_type') }}</span>
           <select name="doc_type">
             <option value=""></option>

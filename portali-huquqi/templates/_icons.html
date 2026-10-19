@@ -1,0 +1,79 @@
+{# Line icons drawn on a 24px grid (SF Symbols-like weight). #}
+{% macro glyph(name, size=20, stroke=1.9) -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke }}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{%- if name == 'briefcase' -%}<rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/>
+{%- elif name == 'banknote' -%}<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.8"/><path d="M6 12h.01M18 12h.01"/>
+{%- elif name == 'heart' -%}<path d="M12 20s-7.2-4.4-9.2-8.7C1.4 8.3 3.2 5 6.6 5c2.1 0 3.6 1.2 5.4 3.3C13.8 6.2 15.3 5 17.4 5c3.4 0 5.2 3.3 3.8 6.3C19.2 15.6 12 20 12 20z"/>
+{%- elif name == 'cap' -%}<path d="M2 9.5 12 4.5l10 5-10 5z"/><path d="M6 11.5v4.3c0 1.4 2.7 3.2 6 3.2s6-1.8 6-3.2v-4.3M22 9.5v5"/>
+{%- elif name == 'people' -%}<circle cx="9" cy="8" r="3.3"/><path d="M2.8 19.5c.7-3.3 3.2-5 6.2-5s5.5 1.7 6.2 5"/><circle cx="17" cy="9" r="2.4"/><path d="M17 14.3c2.3 0 3.9 1.3 4.3 3.7"/>
+{%- elif name == 'leaf' -%}<path d="M5 19.5C5 11 10 5 20 4.5c0 10-5.5 15-14 15z"/><path d="M5 19.5c3.2-4.5 6.5-7.5 10.5-9.5"/>
+{%- elif name == 'sprout' -%}<path d="M12 21v-8.5"/><path d="M12 12.5C12 8.6 9.2 6.5 5 6.5c0 4 2.8 6 7 6z"/><path d="M12 10.5c0-3.7 2.7-6 7-6 0 4-2.7 6-7 6z"/>
+{%- elif name == 'car' -%}<path d="M4.5 16v-4.3L6.9 6.5h10.2l2.4 5.2V16z"/><path d="M4.5 16v2.5M19.5 16v2.5M4.5 11.7h15"/><circle cx="8" cy="13.8" r=".6" fill="currentColor"/><circle cx="16" cy="13.8" r=".6" fill="currentColor"/>
+{%- elif name == 'chip' -%}<rect x="6" y="6" width="12" height="12" rx="2.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3"/>
+{%- elif name == 'bolt' -%}<path d="M13.5 2.5 4.5 14h6.5l-1 7.5 9-11.5h-6.5z"/>
+{%- elif name == 'scales' -%}<path d="M12 3.5v17M6.5 20.5h11M5 7h14"/><path d="M5 7 2.5 13a2.6 2.6 0 0 0 5 0zM19 7l-2.5 6a2.6 2.6 0 0 0 5 0z"/>
+{%- elif name == 'columns' -%}<path d="M3 9.5 12 4l9 5.5zM5.5 10v7.5M10 10v7.5M14 10v7.5M18.5 10v7.5M3 20.5h18"/>
+{%- elif name == 'plan' -%}<rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8.5h8M8 12h8M8 15.5h5"/>
+{%- elif name == 'draft' -%}<path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 20 12z"/><path d="M8.5 10.5h7M8.5 13.5h4.5"/>
+{%- elif name == 'act' -%}<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3M9 7.5h6"/>
+{%- elif name == 'bell' -%}<path d="M6 9a6 6 0 1 1 12 0c0 6.5 2.5 8 2.5 8h-17S6 15.5 6 9"/><path d="M10.3 20.5a1.9 1.9 0 0 0 3.4 0"/>
+{%- elif name == 'clock' -%}<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>
+{%- elif name == 'chat' -%}<path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 20 12z"/>
+{%- elif name == 'check' -%}<circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/>
+{%- elif name == 'person' -%}<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c.8-3.6 4-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/>
+{%- elif name == 'eye' -%}<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>
+{%- elif name == 'shield' -%}<path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/>
+{%- elif name == 'chevron' -%}<path d="m9 5.5 6.5 6.5L9 18.5"/>
+{%- elif name == 'arrow' -%}<path d="M5 12h14M13 6l6 6-6 6"/>
+{%- elif name == 'search' -%}<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>
+{%- elif name == 'grid' -%}<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>
+{%- else -%}<circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="18" cy="12" r="1" fill="currentColor"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+
+{# iOS Settings-style coloured squircle with a white glyph. Colour comes from TOPICS (no inline styles: CSP). #}
+{% macro topic_tile(slug, size='md') -%}
+  {%- set tp = TOPICS.get(slug) -%}
+  {%- if tp -%}
+  <span class="squircle squircle-{{ size }} topic-{{ slug }}" aria-hidden="true">{{ glyph(tp.icon, 16 if size == 'sm' else (30 if size == 'lg' else 20), 2.1) }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro topic_chip(slug) -%}
+  {%- if slug in TOPICS -%}
+  <a class="topic-chip" href="{{ url_for('topic_page', slug=slug) }}">{{ topic_tile(slug, 'sm') }}<span>{{ topic_label(slug) }}</span></a>
+  {%- endif -%}
+{%- endmacro %}
+
+{# Apple Watch-style activity ring. pct = filled share (0-100). #}
+{% macro ring(pct, size=56, width=6, tone='primary', label='', sub='') -%}
+<span class="ring ring-{{ tone }}" role="img" aria-label="{{ label }} {{ sub }}">
+  <svg width="{{ size }}" height="{{ size }}" viewBox="0 0 {{ size }} {{ size }}" aria-hidden="true">
+    {%- set r = (size - width) / 2 -%}
+    <circle class="ring-track" cx="{{ size / 2 }}" cy="{{ size / 2 }}" r="{{ r }}" stroke-width="{{ width }}" fill="none"/>
+    <circle class="ring-fill" cx="{{ size / 2 }}" cy="{{ size / 2 }}" r="{{ r }}" stroke-width="{{ width }}" fill="none"
+            pathLength="100" stroke-dasharray="{{ [[pct, 0]|max, 100]|min }} 100" stroke-linecap="round"
+            transform="rotate(-90 {{ size / 2 }} {{ size / 2 }})"/>
+  </svg>
+  {%- if label -%}<span class="ring-label"><strong>{{ label }}</strong>{% if sub %}<small>{{ sub }}</small>{% endif %}</span>{%- endif -%}
+</span>
+{%- endmacro %}
+
+{# Stage tracker (plan -> discussion -> conclusion -> adoption). #}
+{% macro stage_tracker(doc, compact=false) -%}
+  {%- set st = stage_info(doc) -%}
+  <ol class="stages{% if compact %} stages-compact{% endif %}" aria-label="{{ t('stage_label') }}">
+    {%- for name in STAGES -%}
+      {%- set i = loop.index0 -%}
+      {%- if i < st.idx or (i == st.idx and st.state == 'done') -%}{%- set cls = 'done' -%}
+      {%- elif i == st.idx and st.state == 'stopped' -%}{%- set cls = 'stopped' -%}
+      {%- elif i == st.idx -%}{%- set cls = 'active' -%}
+      {%- else -%}{%- set cls = 'todo' -%}{%- endif -%}
+      <li class="stage stage-{{ cls }}"{% if cls == 'active' %} aria-current="step"{% endif %}>
+        <span class="stage-dot" aria-hidden="true">{% if cls == 'done' %}<svg viewBox="0 0 12 12" width="10" height="10"><path d="m2.5 6.3 2.2 2.2 4.8-5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>{% elif cls == 'stopped' %}<svg viewBox="0 0 12 12" width="10" height="10"><path d="M3.5 3.5l5 5M8.5 3.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>{% endif %}</span>
+        <span class="stage-name">{{ t('stage_' ~ name) }}{% if cls == 'stopped' %} · {{ t('stage_stopped') }}{% endif %}</span>
+      </li>
+    {%- endfor -%}
+  </ol>
+{%- endmacro %}

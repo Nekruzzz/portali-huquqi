@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS documents (
     mj_reg_number   TEXT,                  -- state registration with the Ministry of Justice (item 24)
     mj_reg_date     TEXT,
     returned_note   TEXT,                  -- notification returned to the developer (item 9)
+    topic           TEXT,                  -- policy area, see TOPICS in i18n.py
+    views           INTEGER NOT NULL DEFAULT 0,
     source_url      TEXT,
     published       INTEGER NOT NULL DEFAULT 1,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),

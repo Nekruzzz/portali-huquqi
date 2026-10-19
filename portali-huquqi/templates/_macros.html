@@ -1,3 +1,5 @@
+{% from '_icons.html' import glyph, ring, topic_tile, topic_chip, stage_tracker with context %}
+
 {% macro status_badge(doc) -%}
   {%- set st = doc.status -%}
   <span class="badge badge-{{ st }}">{{ t('st_' ~ st) }}</span>
@@ -10,41 +12,58 @@
   {%- endif -%}
 {%- endmacro %}
 
-{% macro consult_meter(doc, compact=false) -%}
+{# Countdown: ring shows the share of the consultation window still left. #}
+{% macro countdown(doc, size=44, width=5) -%}
   {%- set c = consult_info(doc) -%}
   {%- if c and doc.status == 'consultation' -%}
-    <div class="meter{% if compact %} meter-compact{% endif %}" role="group" aria-label="{{ t('progress_label') }}">
-      <progress class="meter-bar" max="100" value="{{ c.pct }}">{{ c.pct }}%</progress>
-      <div class="meter-text">
+    {%- set left = 100 - c.pct -%}
+    <div class="countdown countdown-{{ size }}{% if c.days_left <= 5 %} is-urgent{% endif %}">
+      {{ ring(left if left > 3 else 3, size, width, 'urgent' if c.days_left <= 5 else 'primary',
+              c.days_left if c.days_left > 0 else '0', t('days_short') if size >= 64 else '') }}
+      <div class="countdown-text">
         {% if c.days_left == 0 %}<strong class="urgent">{{ t('last_day') }}</strong>
-        {% else %}<strong{% if c.days_left <= 5 %} class="urgent"{% endif %}>{{ c.days_left }}</strong> {{ t('days_left') }}{% endif %}
-        <span class="muted">· {{ fmt_date(doc.consult_end) }}</span>
+        {% else %}<strong>{{ c.days_left }} {{ t('days_short') }} {{ t('remaining') }}</strong>{% endif %}
+        <small>{{ t('consult_end') }}: {{ fmt_date(doc.consult_end) }}</small>
       </div>
     </div>
   {%- elif c and doc.status == 'upcoming' -%}
-    <p class="small muted">{{ t('starts_on') }}: {{ fmt_date(doc.consult_start) }}</p>
+    <div class="countdown is-upcoming">
+      <span class="countdown-icon">{{ glyph('clock', 18) }}</span>
+      <div class="countdown-text"><strong>{{ t('starts_on') }}: {{ fmt_date(doc.consult_start) }}</strong><small>{{ t('st_upcoming') }}</small></div>
+    </div>
   {%- endif -%}
 {%- endmacro %}
 
+{# kept for pages that still use the linear meter #}
+{% macro consult_meter(doc, compact=false) -%}{{ countdown(doc) }}{%- endmacro %}
+
 {% macro doc_card(doc, show_kind=false) -%}
   <article class="doc-card kind-{{ doc.kind }}">
-    <div class="doc-card-meta">
-      {% if show_kind %}<span class="kind-tag">{{ t('kind_' ~ doc.kind) }}</span>{% endif %}
+    <div class="doc-card-top">
+      <div class="doc-card-meta">
+        {% if show_kind %}<span class="kind-tag">{{ t('kind_' ~ doc.kind) }}</span>{% endif %}
+        {% if doc.kind != 'act' %}{{ status_badge(doc) }}{% endif %}
+        {{ legal_badge(doc) }}
+        {% if not doc.published %}<span class="badge badge-hidden">{{ t('draft_hidden') }}</span>{% endif %}
+      </div>
+      <span class="doc-code" title="{{ t('doc_code') }}">{{ doc_code(doc) }}</span>
+    </div>
+    <h3 class="doc-card-title"><a href="{{ url_for('document', doc_id=doc.id) }}">{{ L(doc, 'title') }}</a></h3>
+    <p class="doc-card-sub">
       {% if doc.doc_type %}<span>{{ doc_type_label(doc.doc_type) }}</span>{% endif %}
       {% if doc.number %}<span>№&nbsp;{{ doc.number }}</span>{% endif %}
       {% if doc.doc_date %}<time datetime="{{ doc.doc_date }}">{{ fmt_date(doc.doc_date) }}</time>{% endif %}
-      {% if doc.kind != 'act' %}{{ status_badge(doc) }}{% endif %}
-      {{ legal_badge(doc) }}
-      {% if not doc.published %}<span class="badge badge-hidden">{{ t('draft_hidden') }}</span>{% endif %}
-    </div>
-    <h3 class="doc-card-title"><a href="{{ url_for('document', doc_id=doc.id) }}">{{ L(doc, 'title') }}</a></h3>
+    </p>
     {% if L(doc, 'developer') %}<p class="doc-card-dev">{{ L(doc, 'developer') }}</p>{% endif %}
-    {% if L(doc, 'summary') %}<p class="doc-card-summary">{{ L(doc, 'summary')|truncate(220) }}</p>{% endif %}
+    {% if L(doc, 'summary') %}<p class="doc-card-summary">{{ L(doc, 'summary')|truncate(200) }}</p>{% endif %}
     <div class="doc-card-foot">
-      {{ consult_meter(doc, compact=true) }}
-      {% if doc.n_comments is defined and doc.kind != 'act' and doc.n_comments %}
-        <span class="small muted comment-count"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg> {{ doc.n_comments }} {{ t('comments_count') }}</span>
-      {% endif %}
+      {{ countdown(doc) }}
+      <span class="doc-card-tags">
+        {{ topic_chip(doc.topic) }}
+        {% if doc.n_comments is defined and doc.kind != 'act' and doc.n_comments %}
+          <span class="pill">{{ glyph('chat', 13, 2.2) }} {{ doc.n_comments }}</span>
+        {% endif %}
+      </span>
     </div>
   </article>
 {%- endmacro %}

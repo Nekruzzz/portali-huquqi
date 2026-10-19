@@ -7,6 +7,7 @@
   const fs = Number(get("ph-font") || 0);
   if (fs) root.classList.add("fs-" + fs);
   if (get("ph-contrast") === "1") root.classList.add("contrast");
+  root.classList.add("js");
 })();
 
 // iOS Safari only applies :active styles when a touch listener exists — gives instant press feedback.
@@ -103,4 +104,141 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".mobile-menu a").forEach((a) =>
     a.addEventListener("click", () => a.closest("details").removeAttribute("open"))
   );
+
+  initToasts();
+  initTabs();
+  initReveal();
+  document.querySelectorAll("form.js-suggest").forEach(initSuggest);
 });
+
+// ---------- segmented tabs with a sliding thumb (spring transition in CSS) ----------
+function initTabs() {
+  document.querySelectorAll(".js-tabs").forEach((bar) => {
+    const tabs = [...bar.querySelectorAll('[role="tab"]')];
+    const thumb = bar.querySelector(".segmented-thumb");
+    const place = (tab, instant) => {
+      if (!thumb) return;
+      if (instant) thumb.classList.add("no-anim");
+      thumb.style.width = tab.offsetWidth + "px";
+      thumb.style.transform = "translateX(" + (tab.offsetLeft - 3) + "px)";
+      if (instant) requestAnimationFrame(() => thumb.classList.remove("no-anim"));
+    };
+    const select = (tab, focus) => {
+      tabs.forEach((t) => {
+        const on = t === tab;
+        t.setAttribute("aria-selected", on ? "true" : "false");
+        t.tabIndex = on ? 0 : -1;
+        const panel = document.getElementById(t.getAttribute("aria-controls"));
+        if (panel) panel.classList.toggle("is-active", on);
+      });
+      place(tab, false);
+      if (focus) tab.focus();
+    };
+    // feedback on pointer-down, commit immediately: the thumb starts moving as the finger lands
+    tabs.forEach((tab, i) => {
+      tab.addEventListener("pointerdown", () => select(tab, false));
+      tab.addEventListener("click", () => select(tab, false));
+      tab.addEventListener("keydown", (e) => {
+        const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+        if (step) { e.preventDefault(); select(tabs[(i + step + tabs.length) % tabs.length], true); }
+      });
+    });
+    const current = tabs.find((t) => t.getAttribute("aria-selected") === "true") || tabs[0];
+    place(current, true);
+    bar.classList.add("is-ready");
+    window.addEventListener("resize", () => place(tabs.find((t) => t.getAttribute("aria-selected") === "true"), true));
+  });
+}
+
+// ---------- gentle reveal as content scrolls into view ----------
+function initReveal() {
+  const items = document.querySelectorAll(".reveal");
+  if (!("IntersectionObserver" in window)) { items.forEach((el) => el.classList.add("in")); return; }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } });
+  }, { rootMargin: "0px 0px -6% 0px", threshold: 0.05 });
+  items.forEach((el) => io.observe(el));
+  window.addEventListener("beforeprint", () => items.forEach((el) => el.classList.add("in")));
+  // anything already on screen shows at once
+  requestAnimationFrame(() => items.forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.top < window.innerHeight && r.bottom > 0) el.classList.add("in");
+  }));
+}
+
+// ---------- Spotlight-style search suggestions ----------
+function initSuggest(form) {
+  const input = form.querySelector('input[type="search"]');
+  const list = form.querySelector(".suggest");
+  if (!input || !list) return;
+  const url = form.dataset.suggestUrl;
+  const searchUrl = form.dataset.searchUrl || form.action;
+  let timer = null, seq = 0, active = -1, items = [];
+
+  const close = () => { list.hidden = true; input.setAttribute("aria-expanded", "false"); active = -1; input.removeAttribute("aria-activedescendant"); };
+  const highlight = (i) => {
+    const opts = list.querySelectorAll('[role="option"]');
+    opts.forEach((o, j) => o.setAttribute("aria-selected", j === i ? "true" : "false"));
+    active = i;
+    if (opts[i]) { input.setAttribute("aria-activedescendant", opts[i].id); opts[i].scrollIntoView({ block: "nearest" }); }
+  };
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+  const render = (q, data) => {
+    list.textContent = "";
+    items = data.items || [];
+    items.forEach((it, i) => {
+      const li = el("li"); li.setAttribute("role", "option"); li.id = input.id + "-opt-" + i; li.setAttribute("aria-selected", "false");
+      const a = el("a"); a.href = it.url; a.tabIndex = -1;
+      a.append(el("span", "suggest-kind kind-tag kind-tag-" + it.kind, it.kind_label), el("span", "suggest-title", it.title), el("span", "suggest-code", it.code));
+      li.append(a); list.append(li);
+    });
+    const li = el("li"); li.setAttribute("role", "option"); li.id = input.id + "-opt-all"; li.className = "suggest-all";
+    const a = el("a", null, (form.dataset.allLabel || "{q}").replace("{q}", q));
+    a.href = searchUrl + "?q=" + encodeURIComponent(q); a.tabIndex = -1;
+    li.append(a); list.append(li);
+    list.hidden = false; input.setAttribute("aria-expanded", "true"); active = -1;
+  };
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) { close(); return; }
+    timer = setTimeout(async () => {
+      const mine = ++seq;
+      try {
+        const r = await fetch(url + "?q=" + encodeURIComponent(q), { headers: { Accept: "application/json" } });
+        const data = await r.json();
+        if (mine === seq && input.value.trim() === q) render(q, data);
+      } catch (e) { close(); }
+    }, 120);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (list.hidden) return;
+    const n = list.querySelectorAll('[role="option"]').length;
+    if (e.key === "ArrowDown") { e.preventDefault(); highlight((active + 1) % n); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); highlight((active - 1 + n) % n); }
+    else if (e.key === "Escape") { close(); }
+    else if (e.key === "Enter" && active >= 0) {
+      e.preventDefault();
+      const a = list.querySelectorAll('[role="option"] a')[active];
+      if (a) window.location.href = a.href;
+    }
+  });
+  input.addEventListener("blur", () => setTimeout(close, 150));
+  list.addEventListener("pointerdown", (e) => e.preventDefault()); // keep focus so the link click lands
+}
+
+// ---------- toasts: success messages leave on their own, errors wait for the user ----------
+function initToasts() {
+  const leave = (t) => { t.classList.add("is-leaving"); setTimeout(() => t.remove(), 300); };
+  document.querySelectorAll(".toast").forEach((t) => {
+    const btn = t.querySelector(".js-toast-close");
+    if (btn) btn.addEventListener("click", () => leave(t));
+    if (t.dataset.autohide === "1") {
+      let timer = setTimeout(() => leave(t), 5000);
+      // pause while the pointer or focus is on the message
+      t.addEventListener("pointerenter", () => clearTimeout(timer));
+      t.addEventListener("pointerleave", () => { timer = setTimeout(() => leave(t), 2500); });
+      t.addEventListener("focusin", () => clearTimeout(timer));
+    }
+  });
+}

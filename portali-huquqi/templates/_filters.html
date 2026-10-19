@@ -1,9 +1,19 @@
 {# Shared filter bar. Expects: statuses (list), years (list, optional), show_kind (bool) #}
-<form class="filters" method="get" role="search">
+<form class="filters js-suggest" method="get" role="search" data-suggest-url="{{ url_for('api_suggest') }}" data-search-url="{{ url_for('search') }}" data-all-label="{{ t('suggest_all') }}">
   <div class="filter-q">
     <label class="sr-only" for="fq">{{ t('nav_search') }}</label>
-    <input id="fq" name="q" type="search" value="{{ request.args.get('q', '') }}" placeholder="{{ t('search_placeholder') }}">
+    <input id="fq" name="q" type="search" value="{{ request.args.get('q', '') }}" placeholder="{{ t('search_placeholder') }}"
+           autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="fq-list">
+    <ul class="suggest" id="fq-list" role="listbox" aria-label="{{ t('suggest_label') }}" hidden></ul>
   </div>
+  {% if not topic_head %}
+  <label class="field-inline"><span>{{ t('topic') }}</span>
+    <select name="topic">
+      <option value="">{{ t('all') }}</option>
+      {% for slug in TOPICS %}<option value="{{ slug }}"{% if request.args.get('topic') == slug %} selected{% endif %}>{{ topic_label(slug) }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
   {% if show_kind %}
   <label class="field-inline"><span>{{ t('kind_label') }}</span>
     <select name="kind">
@@ -55,6 +65,8 @@
       <option value="new">{{ t('sort_new') }}</option>
       <option value="old"{% if request.args.get('sort') == 'old' %} selected{% endif %}>{{ t('sort_old') }}</option>
       {% if statuses %}<option value="closing"{% if request.args.get('sort') == 'closing' %} selected{% endif %}>{{ t('sort_closing') }}</option>{% endif %}
+      <option value="posted"{% if request.args.get('sort') == 'posted' %} selected{% endif %}>{{ t('sort_posted') }}</option>
+      <option value="discussed"{% if request.args.get('sort') == 'discussed' %} selected{% endif %}>{{ t('sort_discussed') }}</option>
     </select>
   </label>
   <label class="check filter-full"><input type="checkbox" name="fulltext" value="1"{% if request.args.get('fulltext') == '1' %} checked{% endif %}> <span>{{ t('fulltext') }}</span></label>

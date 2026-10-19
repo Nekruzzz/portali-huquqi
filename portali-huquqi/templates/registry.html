@@ -32,7 +32,7 @@
   {% set show_kind = false %}
   {% set show_legal = kind == 'act' %}
   {% include '_filters.html' %}
-  <p class="result-count" aria-live="polite"><strong>{{ total }}</strong> {{ t('results') }}</p>
+  <h2 class="result-count" aria-live="polite"><strong>{{ total }}</strong> {{ t('results') }}</h2>
   {% if rows %}
     <div class="card-list">{% for d in rows %}{{ doc_card(d) }}{% endfor %}</div>
     {{ pagination(page, pages) }}

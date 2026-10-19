@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% from '_macros.html' import doc_card, csrf with context %}
+{% from '_icons.html' import glyph with context %}
 {% block title %}{{ t('account') }}{% endblock %}
 {% block content %}
 {% set u = g.user %}
@@ -59,7 +60,13 @@
         </li>
         {% endfor %}
       </ul>
-      {% else %}<p class="empty">{{ t('no_results') }}</p>{% endif %}
+      {% else %}
+        <div class="empty empty-rich">
+          <span class="squircle squircle-lg squircle-red" aria-hidden="true">{{ glyph('bell', 30, 2) }}</span>
+          <p>{{ t('empty_subs') }}</p>
+          <a class="btn btn-ghost" href="{{ url_for('registry', slug='drafts') }}">{{ t('nav_drafts') }} →</a>
+        </div>
+      {% endif %}
     </section>
 
     <section class="section-tight">
@@ -77,7 +84,13 @@
         </li>
         {% endfor %}
       </ul>
-      {% else %}<p class="empty">{{ t('no_comments') }}</p>{% endif %}
+      {% else %}
+        <div class="empty empty-rich">
+          <span class="squircle squircle-lg squircle-green" aria-hidden="true">{{ glyph('chat', 30, 2) }}</span>
+          <p>{{ t('empty_my_comments') }}</p>
+          <a class="btn btn-primary" href="{{ url_for('search', status='consultation', sort='closing') }}">{{ t('see_open') }}</a>
+        </div>
+      {% endif %}
     </section>
   </div>
   <aside>

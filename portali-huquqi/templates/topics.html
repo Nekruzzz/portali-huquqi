@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import glyph, topic_tile with context %}
+{% block title %}{{ t('topics') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="wrap">
+    <h1>{{ t('topics_title') }}</h1>
+    <p class="lead">{{ t('topics_intro') }}</p>
+  </div>
+</div>
+<div class="wrap section-tight">
+  <ul class="settings-list">
+    {% for slug in TOPICS %}
+    <li>
+      <a href="{{ url_for('topic_page', slug=slug) }}">
+        {{ topic_tile(slug, 'md') }}
+        <span class="settings-label">{{ topic_label(slug) }}</span>
+        <span class="settings-value">{{ topic_counts.get(slug, 0) }}</span>
+        <span class="settings-chevron">{{ glyph('chevron', 16, 2.4) }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

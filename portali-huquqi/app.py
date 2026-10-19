@@ -34,8 +34,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 import mailer
-from i18n import (BUSINESS_FIELDS, DETAIL_FIELDS, DOC_TYPES, KINDS, LANGS, LEGAL_STATUSES, PLAN_FIELDS,
-                  RIA_FIELDS, STRINGS, detail_label, tr)
+from i18n import (BUSINESS_FIELDS, DETAIL_FIELDS, DOC_TYPES, KIND_CODE, KINDS, LANGS, LEGAL_STATUSES,
+                  PLAN_FIELDS, RIA_FIELDS, STAGES, STRINGS, TOPICS, detail_label, tr)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ON_VERCEL = bool(os.environ.get("VERCEL"))
@@ -138,7 +138,7 @@ MIGRATIONS = {
               ("reset_expires", "TEXT"), ("admin_note", "TEXT")],
     "documents": [("legal_status", "TEXT"), ("effective_date", "TEXT"), ("publication_tj", "TEXT"),
                   ("publication_ru", "TEXT"), ("mj_reg_number", "TEXT"), ("mj_reg_date", "TEXT"),
-                  ("returned_note", "TEXT")],
+                  ("returned_note", "TEXT"), ("topic", "TEXT"), ("views", "INTEGER NOT NULL DEFAULT 0")],
     "comments": [("article_ref", "TEXT")],
 }
 
@@ -279,7 +279,10 @@ def client_ip():
 
 
 def safe_next(target):
-    if target and urlparse(target).netloc == "" and target.startswith("/") and not target.startswith("//"):
+    """Only same-site paths: no scheme, no host, no backslashes or control characters."""
+    if (target and target.startswith("/") and not target.startswith("//") and "\\" not in target
+            and not re.search(r"[\x00-\x1f%]5[cC]|[\x00-\x1f]", target) and urlparse(target).netloc == ""
+            and not urlparse(target).scheme):
         return target
     return url_for("index")
 
@@ -327,6 +330,39 @@ def detail_value(details, key):
     return v.get(current_lang()) or v.get("tj") or ""
 
 
+CODE_RE = re.compile(r"^\s*(0[123])/(\d{2})-0*(\d{1,7})\s*$")
+
+
+def doc_code(doc):
+    """Registry number in the style of regulation.gov.ru: <register>/<yy>-<id>, e.g. 02/26-00007."""
+    year = (doc["created_at"] or doc["doc_date"] or "2000")[2:4]
+    return f"{KIND_CODE.get(doc['kind'], '00')}/{year}-{doc['id']:05d}"
+
+
+def stage_info(doc):
+    """Where a document stands in the plan -> discussion -> conclusion -> adoption cycle."""
+    kind, st = doc["kind"], doc["status"]
+    if kind == "act":
+        return {"idx": 3, "state": "done"}
+    if kind == "plan":
+        if st in ("upcoming", "consultation"):
+            return {"idx": 0, "state": "active"}
+        return {"idx": 0, "state": "stopped" if st == "rejected" else "done"}
+    if st in ("upcoming", "consultation"):
+        return {"idx": 1, "state": "active"}
+    if st == "review":
+        return {"idx": 2, "state": "active"}
+    if st == "rejected":
+        return {"idx": 2, "state": "stopped"}
+    if st == "adopted":
+        return {"idx": 3, "state": "active"}
+    return {"idx": 2, "state": "done"}
+
+
+def topic_label(slug, lang=None):
+    return TOPICS.get(slug, {}).get(lang or current_lang(), "") if slug else ""
+
+
 def parse_ids(text):
     return sorted({int(x) for x in re.findall(r"\d+", text or "")})
 
@@ -345,7 +381,7 @@ def abs_url(endpoint, **kw):
 def queue_mail(to_email, lang, subj_key, body_key, user_id=None, footer=True, **fmt):
     lang = lang if lang in LANGS else "tj"
     site = tr("site_name", lang)
-    subject = tr(subj_key, lang).format(**fmt)
+    subject = re.sub(r"[\r\n]+", " ", tr(subj_key, lang).format(**fmt))  # no header injection
     body = tr(body_key, lang).format(**fmt)
     if footer:
         body += "\n\n--\n" + tr("mail_footer", lang).format(site=site, url=abs_url("account"))
@@ -449,6 +485,9 @@ def headers(resp):
         "Content-Security-Policy",
         "default-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; "
         "script-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'")
+    if request.is_secure or request.headers.get("X-Forwarded-Proto") == "https":
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     if request.path.startswith("/api/"):
         resp.headers["Access-Control-Allow-Origin"] = "*"
     return resp
@@ -462,6 +501,7 @@ def inject():
                 LEGAL_STATUSES=LEGAL_STATUSES, fmt_date=fmt_date, doc_type_label=doc_type_label,
                 csrf_token=csrf_token, SLUG_OF_KIND=SLUG_OF_KIND, consult_info=consult_info, today=today(),
                 is_fallback=is_fallback, detail_label=lambda k: detail_label(k, current_lang()),
+                TOPICS=TOPICS, STAGES=STAGES, topic_label=topic_label, doc_code=doc_code, stage_info=stage_info,
                 site=s, logo_url=url_for("logo", v=s.get("logo_version", "1")) if logo else None,
                 operator=s.get("operator_ru") if current_lang() == "ru" and s.get("operator_ru")
                 else s.get("operator_tj"),
@@ -507,8 +547,16 @@ def can_edit(doc):
 # Queries
 # ---------------------------------------------------------------------------
 def search_documents(kind=None, q="", doc_type="", year="", status="", sort="new", page=1, per_page=PER_PAGE,
-                     owner_id=None, include_hidden=False, developer="", legal="", fulltext=False):
+                     owner_id=None, include_hidden=False, developer="", legal="", fulltext=False, topic=""):
     where, params = [], []
+    m = CODE_RE.match(q or "")
+    if m:  # a registry number was typed: jump straight to that document
+        where.append("d.id=?")
+        params.append(int(m.group(3)))
+        q = ""
+    if topic in TOPICS:
+        where.append("d.topic=?")
+        params.append(topic)
     if kind:
         where.append("d.kind=?")
         params.append(kind)
@@ -543,13 +591,16 @@ def search_documents(kind=None, q="", doc_type="", year="", status="", sort="new
         params.append(f"%{tok}%")
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     order = {"old": "d.doc_date ASC, d.id ASC",
-             "closing": "CASE WHEN d.consult_end IS NULL THEN 1 ELSE 0 END, d.consult_end ASC"}.get(
+             "closing": "CASE WHEN d.consult_end IS NULL THEN 1 ELSE 0 END, d.consult_end ASC",
+             "posted": "d.created_at DESC, d.id DESC",
+             "discussed": "n_comments + n_votes DESC, d.views DESC, d.id DESC"}.get(
         sort, "d.doc_date DESC, d.id DESC")
     db = get_db()
     total = db.execute(f"SELECT COUNT(*) FROM documents d {clause}", params).fetchone()[0]
     rows = db.execute(
         f"SELECT d.*, {status_sql('d')} AS status, "
-        f"(SELECT COUNT(*) FROM comments c WHERE c.document_id=d.id AND c.status='visible') AS n_comments "
+        f"(SELECT COUNT(*) FROM comments c WHERE c.document_id=d.id AND c.status='visible') AS n_comments, "
+        f"(SELECT COUNT(*) FROM votes v WHERE v.document_id=d.id) AS n_votes "
         f"FROM documents d {clause} ORDER BY {order} LIMIT ? OFFSET ?",
         params + [per_page, (page - 1) * per_page]).fetchall()
     return rows, total
@@ -559,7 +610,7 @@ def search_args():
     a = request.args
     return dict(q=a.get("q", ""), doc_type=a.get("type", ""), year=a.get("year", ""), status=a.get("status", ""),
                 sort=a.get("sort", "new"), developer=a.get("dev", ""), legal=a.get("legal", ""),
-                fulltext=a.get("fulltext") == "1")
+                fulltext=a.get("fulltext") == "1", topic=a.get("topic", ""))
 
 
 def get_document(doc_id):
@@ -599,10 +650,52 @@ def index():
     db = get_db()
     counts = {k: db.execute("SELECT COUNT(*) FROM documents WHERE kind=? AND published=1", (k,)).fetchone()[0]
               for k in KINDS}
-    open_now, _ = search_documents(status="consultation", sort="closing", per_page=6)
+    closing, n_open = search_documents(status="consultation", sort="closing", per_page=6)
+    newest, _ = search_documents(sort="posted", per_page=6, status="")
+    newest = [d for d in newest if d["kind"] != "act"][:6] or newest
+    discussed, _ = search_documents(sort="discussed", per_page=6)
+    discussed = [d for d in discussed if d["kind"] != "act"][:6]
     latest_acts, _ = search_documents(kind="act", per_page=5)
     news = db.execute("SELECT * FROM news WHERE published=1 ORDER BY created_at DESC LIMIT 3").fetchall()
-    return render_template("index.html", counts=counts, open_now=open_now, latest_acts=latest_acts, news=news)
+    week = (today() + timedelta(days=7)).isoformat()
+    closing_week = sum(1 for d in closing if d["consult_end"] and d["consult_end"] <= week)
+    if n_open > len(closing):
+        closing_week = db.execute(
+            f"SELECT COUNT(*) FROM documents d WHERE published=1 AND ({status_sql('d')})='consultation' "
+            "AND consult_end <= ?", (week,)).fetchone()[0]
+    c = db.execute("SELECT COUNT(*) total, SUM(c.decision IS NOT NULL) answered FROM comments c "
+                   "JOIN documents d ON d.id=c.document_id WHERE c.status='visible' AND d.published=1").fetchone()
+    stats_ = {
+        "open": n_open, "closing_week": closing_week, "proposals": c["total"] or 0,
+        "answered_pct": round(100 * (c["answered"] or 0) / c["total"]) if c["total"] else 0,
+        "in_force": db.execute("SELECT COUNT(*) FROM documents WHERE kind='act' AND published=1 "
+                               "AND coalesce(legal_status,'in_force')<>'repealed'").fetchone()[0],
+        "participants": db.execute("SELECT COUNT(*) FROM users WHERE status='active' AND role='user'").fetchone()[0],
+    }
+    topic_counts = {r[0]: r[1] for r in db.execute(
+        "SELECT topic, COUNT(*) FROM documents WHERE published=1 AND topic IS NOT NULL GROUP BY topic")}
+    return render_template("index.html", counts=counts, closing=closing, newest=newest, discussed=discussed,
+                           latest_acts=latest_acts, news=news, s=stats_, topic_counts=topic_counts)
+
+
+@app.route("/topics")
+def topics():
+    counts = {r[0]: r[1] for r in get_db().execute(
+        "SELECT topic, COUNT(*) FROM documents WHERE published=1 AND topic IS NOT NULL GROUP BY topic")}
+    return render_template("topics.html", topic_counts=counts)
+
+
+@app.route("/topic/<slug>")
+def topic_page(slug):
+    if slug not in TOPICS:
+        abort(404)
+    page = page_arg()
+    args = search_args()
+    args["topic"] = slug
+    kind = request.args.get("kind") if request.args.get("kind") in KINDS else None
+    rows, total = search_documents(kind, page=page, **args)
+    return render_template("search.html", rows=rows, total=total, page=page, kind=kind, topic_head=slug,
+                           developers=developers_list(), pages=max((total + PER_PAGE - 1) // PER_PAGE, 1))
 
 
 @app.route("/<any(plans, drafts, acts):slug>")
@@ -674,6 +767,10 @@ def document(doc_id):
         links["amends" if r["link_type"] == "amends" else "repeals"].append(r)
     votes = {r["value"]: r["n"] for r in db.execute(
         "SELECT value, COUNT(*) n FROM votes WHERE document_id=? GROUP BY value", (doc_id,))}
+    ua = (request.user_agent.string or "").lower()
+    if doc["published"] and not can_edit(doc) and not any(b in ua for b in ("bot", "spider", "crawl")):
+        db.execute("UPDATE documents SET views=views+1 WHERE id=?", (doc_id,))
+        db.commit()
     my_vote = following = None
     if g.user:
         v = db.execute("SELECT value FROM votes WHERE document_id=? AND user_id=?", (doc_id, g.user["id"])).fetchone()
@@ -686,7 +783,8 @@ def document(doc_id):
                            body_fallback=bool(body) and not doc[f"body_{lang}"],
                            consult=consult_info(doc), can_edit=can_edit(doc),
                            votes_for=votes.get(1, 0), votes_against=votes.get(-1, 0), my_vote=my_vote,
-                           following=following, article_options=article_options(doc, blocks))
+                           following=following, article_options=article_options(doc, blocks),
+                           selected_article=request.args.get("article", ""), stage=stage_info(doc))
 
 
 @app.route("/doc/<int:doc_id>.txt")
@@ -747,7 +845,7 @@ def add_comment(doc_id):
                      lambda lg: {"title": doc_title(doc, lg), "author": author, "body": body[:1000], "url": url})
     db.commit()
     session.pop("comment_draft", None)
-    flash(t("comment_saved"), "success")
+    flash(t("comment_saved_n").format(n=f"{doc_code(doc)}/{cur.lastrowid}"), "success")
     return redirect(anchor)
 
 
@@ -1224,7 +1322,7 @@ def save_uploads(doc_id):
                          (doc_id, stored, original, os.path.getsize(path)))
 
 
-TEXT_COLS = ("doc_type", "number", "title_tj", "title_ru", "developer_tj", "developer_ru", "summary_tj",
+TEXT_COLS = ("topic", "doc_type", "number", "title_tj", "title_ru", "developer_tj", "developer_ru", "summary_tj",
              "summary_ru", "body_tj", "body_ru", "outcome_note_tj", "outcome_note_ru", "source_url",
              "publication_tj", "publication_ru", "mj_reg_number")
 DATE_COLS = ("doc_date", "dev_deadline", "adopt_deadline", "consult_start", "consult_end", "outcome_date",
@@ -1261,6 +1359,8 @@ def edit_document(doc_id=None):
         vals = {c: (f.get(c) or "").strip() or None for c in TEXT_COLS}
         if vals["doc_type"] and vals["doc_type"] not in DOC_TYPES:
             vals["doc_type"] = "other"
+        if vals["topic"] not in TOPICS:
+            vals["topic"] = None
         if vals["source_url"] and not re.match(r"^https?://", vals["source_url"]):
             vals["source_url"] = None
         for c in DATE_COLS:
@@ -1689,17 +1789,18 @@ def import_rows(reader, owner_id):
         if dup:
             skipped += 1
             continue
+        topic = row.get("topic") if row.get("topic") in TOPICS else None
         legal = row.get("legal_status") if row.get("legal_status") in LEGAL_STATUSES else \
             ("in_force" if kind == "act" else None)
         src = row.get("source_url") if re.match(r"^https?://", row.get("source_url") or "") else None
         conn.execute(
             "INSERT INTO documents (kind, doc_type, number, doc_date, title_tj, title_ru, developer_tj, developer_ru, "
-            "summary_tj, summary_ru, body_tj, body_ru, publication_tj, legal_status, source_url, owner_id) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "summary_tj, summary_ru, body_tj, body_ru, publication_tj, legal_status, source_url, owner_id, topic) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (kind, doc_type, row.get("number") or None, doc_date, title, row.get("title_ru") or None,
              row.get("developer_tj") or None, row.get("developer_ru") or None, row.get("summary_tj") or None,
              row.get("summary_ru") or None, row.get("body_tj") or None, row.get("body_ru") or None,
-             row.get("publication_tj") or None, legal, src, owner_id))
+             row.get("publication_tj") or None, legal, src, owner_id, topic))
         n += 1
     conn.commit()
     if not db:
@@ -1734,6 +1835,8 @@ def doc_json(d, full=False):
         "developer": {"tj": d["developer_tj"], "ru": d["developer_ru"]},
         "status": d["status"], "consultation": {"start": d["consult_start"], "end": d["consult_end"]},
         "legal_status": d["legal_status"] if d["kind"] == "act" else None,
+        "code": doc_code(d), "topic": d["topic"], "views": d["views"],
+        "stage": dict(zip(("index", "state"), (stage_info(d)["idx"], stage_info(d)["state"]))),
         "url": url_for("document", doc_id=d["id"], _external=True),
     }
     if full:
@@ -1750,6 +1853,20 @@ def doc_json(d, full=False):
             "related_id": d["related_id"], "source_url": d["source_url"],
         })
     return out
+
+
+@app.route("/api/suggest")
+def api_suggest():
+    """Spotlight-style suggestions for the search boxes."""
+    q = (request.args.get("q") or "").strip()[:100]
+    if len(q) < 2:
+        return jsonify(items=[])
+    rows, total = search_documents(q=q, per_page=6)
+    lang = current_lang()
+    return jsonify(total=total, items=[{
+        "id": r["id"], "code": doc_code(r), "kind": r["kind"], "kind_label": tr("kind_" + r["kind"], lang),
+        "title": (r["title_ru"] if lang == "ru" and r["title_ru"] else r["title_tj"]),
+        "status": r["status"], "url": url_for("document", doc_id=r["id"])} for r in rows])
 
 
 @app.route("/api/documents")
@@ -1811,7 +1928,8 @@ def feed():
 @app.route("/sitemap.xml")
 def sitemap():
     urls = [url_for("index", _external=True)] + [url_for("registry", slug=s, _external=True) for s in KIND_SLUGS]
-    urls += [url_for(e, _external=True) for e in ("about", "stats", "developers", "news_list", "contact")]
+    urls += [url_for(e, _external=True) for e in ("about", "stats", "developers", "news_list", "contact", "topics")]
+    urls += [url_for("topic_page", slug=k, _external=True) for k in TOPICS]
     urls += [url_for("document", doc_id=r[0], _external=True)
              for r in get_db().execute("SELECT id FROM documents WHERE published=1")]
     body = "".join(f"<url><loc>{xml_escape(u)}</loc></url>" for u in urls)

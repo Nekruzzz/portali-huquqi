@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
-{% from '_macros.html' import status_badge, legal_badge, consult_meter, csrf with context %}
+{% from '_macros.html' import status_badge, legal_badge, countdown, csrf with context %}
+{% from '_icons.html' import glyph, topic_chip, stage_tracker with context %}
 {% block title %}{{ L(doc, 'title')|truncate(80) }}{% endblock %}
 {% block content %}
 {% set headings = blocks|selectattr('type', 'equalto', 'h')|list %}
@@ -21,6 +22,13 @@
     </div>
     <h1 class="doc-title">{{ L(doc, 'title') }}</h1>
     {% if L(doc, 'developer') %}<p class="lead">{{ L(doc, 'developer') }}</p>{% endif %}
+    <div class="doc-facts">
+      <span class="fact" title="{{ t('doc_code') }}">{{ t('doc_code') }} <strong class="doc-code">{{ doc_code(doc) }}</strong></span>
+      <span class="fact">{{ glyph('eye', 15, 2) }} {{ doc.views or 0 }}</span>
+      {% if doc.kind != 'act' %}<span class="fact">{{ glyph('chat', 15, 2) }} {{ visible_comments|length }}</span>{% endif %}
+      {{ topic_chip(doc.topic) }}
+    </div>
+    {{ stage_tracker(doc) }}
   </div>
 </div>
 
@@ -40,7 +48,7 @@
         {% if doc.adopt_deadline %}<div><dt>{{ t('adopt_deadline') }}</dt><dd>{{ fmt_date(doc.adopt_deadline) }}</dd></div>{% endif %}
         {% if doc.consult_start and doc.kind != 'act' %}<div><dt>{{ t('consult_period') }}</dt><dd>{{ fmt_date(doc.consult_start) }} — {{ fmt_date(doc.consult_end) }}</dd></div>{% endif %}
       </dl>
-      {{ consult_meter(doc) }}
+      {{ countdown(doc, 76, 8) }}
       {% if doc.status == 'consultation' %}
         <a class="btn btn-primary btn-block" href="#comment-form">{{ t('propose') }}</a>
       {% endif %}
@@ -103,6 +111,12 @@
   </aside>
 
   <article class="doc-main">
+    {% if doc.status == 'consultation' %}
+    <div class="mobile-cta">
+      {{ countdown(doc) }}
+      <a class="btn btn-primary" href="#comment-form">{{ t('propose') }}</a>
+    </div>
+    {% endif %}
     {% if can_edit and doc.returned_note %}
       <div class="callout"><strong>{{ t('returned_note') }}:</strong> <span class="pre">{{ doc.returned_note }}</span></div>
     {% endif %}
@@ -114,11 +128,35 @@
     </section>
     {% endif %}
 
-    {% if links.repealed_by %}
-    <div class="callout callout-danger">
-      <strong>{{ t('repealed_by') }}:</strong>
-      {% for r in links.repealed_by %}<a href="{{ url_for('document', doc_id=r.id) }}">{{ L(r, 'title') }}</a> ({{ fmt_date(r.doc_date) }}){% if not loop.last %}; {% endif %}{% endfor %}
-    </div>
+    {% if doc.kind == 'act' %}
+      {% set ls = doc.legal_status or 'in_force' %}
+      {% if ls == 'repealed' %}
+        <div class="status-banner tone-danger">
+          <span class="squircle squircle-md squircle-red" aria-hidden="true">{{ glyph('act', 20, 2.1) }}</span>
+          <div><strong>{{ t('act_status_repealed') }}</strong>
+            {% if links.repealed_by %}<p>{{ t('repealed_by') }}:
+              {% for r in links.repealed_by %}<a href="{{ url_for('document', doc_id=r.id) }}">{{ L(r, 'title') }}</a> ({{ fmt_date(r.doc_date) }}){% if not loop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+          </div>
+        </div>
+      {% elif ls == 'partly' %}
+        <div class="status-banner tone-warn">
+          <span class="squircle squircle-md squircle-orange" aria-hidden="true">{{ glyph('act', 20, 2.1) }}</span>
+          <div><strong>{{ t('act_status_partly') }}</strong>{% if has_links %} <a href="#amendments">{{ t('see_changes') }}</a>{% endif %}</div>
+        </div>
+      {% elif links.amended_by %}
+        {% set last = links.amended_by|last %}
+        <div class="status-banner tone-info">
+          <span class="squircle squircle-md squircle-blue" aria-hidden="true">{{ glyph('check', 20, 2.1) }}</span>
+          <div><strong>{{ t('act_status_amended').format(date=fmt_date(last.doc_date), n=links.amended_by|length) }}</strong>
+            <a href="#amendments">{{ t('see_changes') }}</a></div>
+        </div>
+      {% else %}
+        <div class="status-banner tone-ok">
+          <span class="squircle squircle-md squircle-green" aria-hidden="true">{{ glyph('check', 20, 2.1) }}</span>
+          <div><strong>{{ t('act_status_in_force') }}</strong>
+            {% if doc.effective_date %}<p>{{ t('effective_from') }}: {{ fmt_date(doc.effective_date) }}</p>{% endif %}</div>
+        </div>
+      {% endif %}
     {% endif %}
 
     {% if detail_rows %}
@@ -138,7 +176,8 @@
       <h2>{{ t('full_text') }}</h2>
       {% if body_fallback %}<p class="note">{{ t('text_missing_lang') }}</p>{% endif %}
       {% for b in blocks %}
-        {% if b.type == 'h' %}<h3 id="{{ b.id }}">{{ b.text }}</h3>
+        {% if b.type == 'h' %}<h3 id="{{ b.id }}" class="article-h"><span>{{ b.text }}</span>
+          {% if doc.status == 'consultation' %}<a class="propose-here" href="?article={{ b.text[:120]|urlencode }}#comment-form" aria-label="{{ t('propose_here') }}: {{ b.text }}">{{ glyph('chat', 14, 2.2) }} {{ t('propose') }}</a>{% endif %}</h3>
         {% else %}<p>{{ b.text }}</p>{% endif %}
       {% endfor %}
     </section>
@@ -248,7 +287,7 @@
             <div class="comment-head">
               <span class="avatar" aria-hidden="true">{{ display_name(c)[:1] }}</span>
               <strong>{{ display_name(c) }}</strong>
-              <span class="muted small">{{ t('acc_' ~ c.account_type) }} · {{ fmt_date(c.created_at) }}</span>
+              <span class="muted small">{{ t('acc_' ~ c.account_type) }} · {{ fmt_date(c.created_at) }} · № {{ doc_code(doc) }}/{{ c.id }}</span>
               {% if c.status == 'hidden' %}<span class="badge badge-hidden">{{ t('hidden_comment') }}</span>{% endif %}
               {% if c.decision %}<span class="badge badge-d-{{ c.decision }}">{{ t('decision_' ~ c.decision) }}</span>{% endif %}
             </div>
@@ -307,7 +346,7 @@
             {{ csrf() }}
             <label>{{ t('article_ref') }}
               <select name="article_ref">
-                {% for o in article_options %}<option>{{ o }}</option>{% endfor %}
+                {% for o in article_options %}<option{% if selected_article and o == selected_article %} selected{% endif %}>{{ o }}</option>{% endfor %}
               </select>
             </label>
             <label for="cbody"><strong>{{ t('comment_label') }}</strong></label>

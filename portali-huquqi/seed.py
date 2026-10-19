@@ -148,6 +148,33 @@ def seed_demo(db_path):
             effective_date=("Пас аз 3 моҳи нашр", "Через 3 месяца после опубликования"),
         ),
         consult_start=d(-5), consult_end=d(25))
+    # A few more clearly-marked demo items so every part of the home page has content.
+    add(kind="draft", doc_type="law", doc_date=d(-26), consult_start=d(-26), consult_end=d(4), topic="health",
+        title_tj="Намуна: Лоиҳаи Қонун «Дар бораи ворид намудани тағйирот ба Кодекси тандурустӣ»",
+        title_ru="Демо: Проект закона о внесении изменений в Кодекс здравоохранения",
+        developer_tj="Вазорати тандурустӣ (намуна)", developer_ru="Министерство здравоохранения (демо)",
+        summary_tj="Матни намунавӣ: телетиббиёт ва дорухати электронӣ.",
+        summary_ru="Демонстрационный текст: телемедицина и электронный рецепт.",
+        body_tj="Моддаи 1. Телетиббиёт\n\nМатни намунавӣ.\n\nМоддаи 2. Дорухати электронӣ\n\nМатни намунавӣ.")
+    add(kind="plan", doc_type="resolution", doc_date=d(-12), consult_start=d(-12), consult_end=d(19), topic="education",
+        dev_deadline=d(45), adopt_deadline=d(150),
+        title_tj="Намуна: Нақшаи таҳияи Барномаи давлатии рақамикунонии мактабҳо",
+        title_ru="Демо: План разработки госпрограммы цифровизации школ",
+        developer_tj="Вазорати маориф ва илм (намуна)", developer_ru="Министерство образования и науки (демо)",
+        summary_tj="Матни намунавӣ барои санҷиши портал.", summary_ru="Демонстрационный текст для проверки портала.")
+    add(kind="draft", doc_type="code", doc_date=d(-1), consult_start=d(-1), consult_end=d(29), topic="finance",
+        affects_business=1,
+        title_tj="Намуна: Лоиҳаи тағйирот ба Кодекси андози Ҷумҳурии Тоҷикистон",
+        title_ru="Демо: Проект изменений в Налоговый кодекс Республики Таджикистан",
+        developer_tj="Вазорати молия (намуна)", developer_ru="Министерство финансов (демо)",
+        summary_tj="Матни намунавӣ: соддагардонии ҳисоботи андозии соҳибкорони хурд.",
+        summary_ru="Демонстрационный текст: упрощение налоговой отчётности малого бизнеса.",
+        body_tj="Моддаи 1. Ҳисоботи соддашуда\n\nМатни намунавӣ.\n\nМоддаи 2. Мӯҳлатҳо\n\nМатни намунавӣ.")
+    add(kind="plan", doc_type="resolution", doc_date=d(-2), consult_start=d(3), consult_end=d(34), topic="transport",
+        title_tj="Намуна: Нақшаи таҳияи Қоидаҳои ҳаракат дар роҳ (таҳрири нав)",
+        title_ru="Демо: План разработки новой редакции Правил дорожного движения",
+        developer_tj="Вазорати нақлиёт (намуна)", developer_ru="Министерство транспорта (демо)",
+        summary_tj="Матни намунавӣ барои санҷиши портал.", summary_ru="Демонстрационный текст для проверки портала.")
     add(kind="draft", doc_type="resolution", doc_date=d(-35), affects_business=1,
         title_tj="Намуна: Лоиҳаи қарори Ҳукумат дар бораи хизматрасонии электронӣ",
         title_ru="Демо: Проект постановления Правительства об электронных услугах",
@@ -165,6 +192,11 @@ def seed_demo(db_path):
                  "partial", "Намуна: муҳлат дар Тартиб муқаррар карда мешавад.", d(-1)))
     cur.execute("INSERT INTO comments (document_id, user_id, body) VALUES (?,?,?)",
                 (draft1, uid, "Намуна: API-и кушода бояд маълумотро дар формати JSON ва XML диҳад."))
+    for pattern, topic in (("%иҷозатнома%", "economy"), ("%хизматрасонии электронӣ%", "digital"),
+                           ("%иттилооти ҳуқуқӣ%", "justice"), ("%санадҳои меъёрии ҳуқуқӣ%", "state"),
+                           ("%таҳлили таъсири%", "economy"), ("%Портали интернетӣ%", "digital"),
+                           ("%Интернет-портали%", "digital")):
+        cur.execute("UPDATE documents SET topic=? WHERE topic IS NULL AND title_tj LIKE ?", (topic, pattern))
     conn.commit()
     conn.close()
     return act617

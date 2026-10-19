@@ -1,51 +1,153 @@
 {% extends 'base.html' %}
-{% from '_macros.html' import doc_card, status_badge with context %}
+{% from '_macros.html' import doc_card, status_badge, countdown with context %}
+{% from '_icons.html' import glyph, ring, topic_tile with context %}
 {% block title %}{{ t('nav_home') }}{% endblock %}
 {% block content %}
 <section class="hero">
   <div class="wrap hero-in">
-    <h1 class="hero-title">{{ t('hero_title') }}</h1>
-    <p class="hero-text">{{ t('hero_text') }}</p>
-    <form class="hero-search" action="{{ url_for('search') }}" role="search">
+    <p class="hero-eyebrow reveal"><span class="live-dot" aria-hidden="true"></span>{{ s.open }} {{ t('bento_open')|lower }}</p>
+    <h1 class="hero-title reveal">{{ t('hero_title') }}</h1>
+    <p class="hero-text reveal">{{ t('hero_text') }}</p>
+    <form class="hero-search reveal js-suggest" action="{{ url_for('search') }}" role="search" data-suggest-url="{{ url_for('api_suggest') }}" data-all-label="{{ t('suggest_all') }}">
       <label class="sr-only" for="hq">{{ t('nav_search') }}</label>
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="hq" name="q" type="search" placeholder="{{ t('search_placeholder') }}" autocomplete="off">
+      {{ glyph('search', 20) }}
+      <input id="hq" name="q" type="search" placeholder="{{ t('search_placeholder') }}" autocomplete="off"
+             role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="hq-list">
       <button class="btn btn-primary" type="submit">{{ t('search_btn') }}</button>
+      <ul class="suggest" id="hq-list" role="listbox" aria-label="{{ t('suggest_label') }}" hidden></ul>
     </form>
+    <nav class="quick-topics reveal" aria-label="{{ t('topics') }}">
+      {% for slug in TOPICS %}{% if loop.index <= 6 %}
+        <a class="quick-topic" href="{{ url_for('topic_page', slug=slug) }}">{{ topic_tile(slug, 'sm') }}<span>{{ topic_label(slug) }}</span></a>
+      {% endif %}{% endfor %}
+      <a class="quick-topic" href="{{ url_for('topics') }}"><span class="squircle squircle-sm squircle-neutral" aria-hidden="true">{{ glyph('grid', 16, 2.1) }}</span><span>{{ t('all') }}</span></a>
+    </nav>
   </div>
 </section>
 
+{# ---- Bento: the state of public consultation at a glance ---- #}
+<section class="wrap bento" aria-label="{{ t('stats_title') }}">
+  {% set soon = closing[0] if closing else None %}
+  <article class="tile tile-feature reveal">
+    {% if soon %}
+      {% set c = consult_info(soon) %}
+      <p class="tile-eyebrow">{{ glyph('clock', 16) }} {{ t('bento_closing_soonest') }}</p>
+      <div class="feature-body">
+        {{ ring(100 - c.pct if 100 - c.pct > 3 else 3, 132, 12, 'urgent' if c.days_left <= 5 else 'primary', c.days_left, t('days_short')) }}
+        <div class="feature-text">
+          <span class="kind-tag kind-tag-{{ soon.kind }}">{{ t('kind_' ~ soon.kind) }}</span>
+          <h2><a href="{{ url_for('document', doc_id=soon.id) }}">{{ L(soon, 'title') }}</a></h2>
+          {% if L(soon, 'developer') %}<p class="muted">{{ L(soon, 'developer') }}</p>{% endif %}
+          <p class="small muted">{{ t('consult_end') }}: {{ fmt_date(soon.consult_end) }}</p>
+          <a class="btn btn-primary" href="{{ url_for('document', doc_id=soon.id) }}#comment-form">{{ t('propose') }}</a>
+        </div>
+      </div>
+    {% else %}
+      <p class="tile-eyebrow">{{ glyph('clock', 16) }} {{ t('bento_open') }}</p>
+      <p class="feature-empty">{{ t('bento_none_open') }}</p>
+      <a class="btn btn-ghost" href="{{ url_for('registry', slug='plans') }}">{{ t('nav_plans') }} →</a>
+    {% endif %}
+  </article>
+
+  <a class="tile tile-stat tone-green reveal" href="{{ url_for('search', status='consultation', sort='closing') }}">
+    <span class="squircle squircle-md squircle-green" aria-hidden="true">{{ glyph('draft', 20, 2.1) }}</span>
+    <strong class="big-num">{{ s.open }}</strong><span>{{ t('bento_open') }}</span>
+  </a>
+  <a class="tile tile-stat tone-orange reveal" href="{{ url_for('search', status='consultation', sort='closing') }}">
+    <span class="squircle squircle-md squircle-orange" aria-hidden="true">{{ glyph('clock', 20, 2.1) }}</span>
+    <strong class="big-num">{{ s.closing_week }}</strong><span>{{ t('bento_closing_week') }}</span>
+  </a>
+  <a class="tile tile-stat reveal" href="{{ url_for('stats') }}">
+    <div class="tile-row">
+      <span class="squircle squircle-md squircle-blue" aria-hidden="true">{{ glyph('chat', 20, 2.1) }}</span>
+      {{ ring(s.answered_pct, 44, 6, 'blue') }}
+    </div>
+    <strong class="big-num">{{ s.proposals }}</strong><span>{{ t('bento_proposals') }} · {{ s.answered_pct }}% {{ t('bento_answered') }}</span>
+  </a>
+  <a class="tile tile-stat reveal" href="{{ url_for('registry', slug='acts', legal='in_force') }}">
+    <span class="squircle squircle-md squircle-indigo" aria-hidden="true">{{ glyph('act', 20, 2.1) }}</span>
+    <strong class="big-num">{{ s.in_force }}</strong><span>{{ t('bento_in_force') }}</span>
+  </a>
+
+  <article class="tile tile-subscribe reveal">
+    <span class="squircle squircle-lg squircle-red" aria-hidden="true">{{ glyph('bell', 30, 2) }}</span>
+    <div>
+      <h2>{{ t('bento_subscribe_t') }}</h2>
+      <p class="muted">{{ t('bento_subscribe_d') }}</p>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('registry', slug='drafts') if g.user else url_for('register') }}">{{ t('bento_subscribe_btn') }}</a>
+  </article>
+  <a class="tile tile-stat reveal" href="{{ url_for('developers') }}">
+    <span class="squircle squircle-md squircle-pink" aria-hidden="true">{{ glyph('people', 20, 2.1) }}</span>
+    <strong class="big-num">{{ s.participants }}</strong><span>{{ t('bento_participants') }}</span>
+  </a>
+  <a class="tile tile-stat tile-link reveal" href="{{ url_for('stats') }}">
+    <span class="squircle squircle-md squircle-neutral" aria-hidden="true">{{ glyph('grid', 20, 2.1) }}</span>
+    <strong>{{ t('nav_stats') }}</strong><span class="tile-arrow">{{ glyph('arrow', 18) }}</span>
+  </a>
+</section>
+
+{# ---- The three registers ---- #}
 <section class="wrap registers" aria-label="{{ t('kind_label') }}">
   {% for kind in KINDS %}
-  <a class="register-card kind-{{ kind }}" href="{{ url_for('registry', slug=SLUG_OF_KIND[kind]) }}">
-    <span class="register-step">{{ loop.index }}</span>
+  <a class="register-card kind-{{ kind }} reveal" href="{{ url_for('registry', slug=SLUG_OF_KIND[kind]) }}">
+    <span class="register-step">{{ glyph(kind, 20, 2.1) }}</span>
     <h2>{{ t('reg_title_' ~ kind) }}</h2>
     <p>{{ t('reg_desc_' ~ kind) }}</p>
-    <span class="register-count"><strong>{{ counts[kind] }}</strong> {{ t('count_docs') }} →</span>
+    <span class="register-count"><strong>{{ counts[kind] }}</strong> {{ t('count_docs') }} {{ glyph('arrow', 16, 2.2) }}</span>
   </a>
   {% endfor %}
 </section>
 
+{# ---- Explore: closing soon / new / most discussed (cf. regulations.gov) ---- #}
 <section class="wrap section">
   <div class="section-head">
-    <h2>{{ t('open_now') }}</h2>
-    <a href="{{ url_for('search', status='consultation', sort='closing') }}">{{ t('all') }} →</a>
-  </div>
-  {% if open_now %}
-    <div class="card-grid">
-      {% for d in open_now %}{{ doc_card(d, show_kind=true) }}{% endfor %}
+    <h2>{{ t('explore') }}</h2>
+    <div class="segmented js-tabs" role="tablist" aria-label="{{ t('explore') }}">
+      <span class="segmented-thumb" aria-hidden="true"></span>
+      <button type="button" role="tab" id="tab-closing" aria-controls="panel-closing" aria-selected="true">{{ t('tab_closing') }}</button>
+      <button type="button" role="tab" id="tab-new" aria-controls="panel-new" aria-selected="false" tabindex="-1">{{ t('tab_new') }}</button>
+      <button type="button" role="tab" id="tab-discussed" aria-controls="panel-discussed" aria-selected="false" tabindex="-1">{{ t('tab_discussed') }}</button>
     </div>
-  {% else %}
-    <p class="empty">{{ t('open_now_empty') }}</p>
-  {% endif %}
+  </div>
+  {% for key, rows, link in (('closing', closing, url_for('search', status='consultation', sort='closing')),
+                              ('new', newest, url_for('search', sort='posted')),
+                              ('discussed', discussed, url_for('search', sort='discussed'))) %}
+  <div class="tab-panel{% if loop.first %} is-active{% endif %}" role="tabpanel" id="panel-{{ key }}" aria-labelledby="tab-{{ key }}">
+    <h3 class="tab-panel-h">{{ t('tab_' ~ key) }}</h3>
+    {% if rows %}
+      <div class="card-grid">{% for d in rows %}{{ doc_card(d, show_kind=true) }}{% endfor %}</div>
+      <p class="see-all"><a class="btn btn-ghost" href="{{ link }}">{{ t('all') }} {{ glyph('arrow', 16, 2.2) }}</a></p>
+    {% else %}
+      <p class="empty">{{ t('open_now_empty') if key == 'closing' else t('no_results') }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+
+{# ---- Topics (cf. EU "Have your say", Federal Register sections) ---- #}
+<section class="wrap section">
+  <div class="section-head">
+    <h2>{{ t('topics_title') }}</h2>
+    <a href="{{ url_for('topics') }}">{{ t('all') }} →</a>
+  </div>
+  <div class="topic-grid">
+    {% for slug in TOPICS %}
+    <a class="topic-card reveal" href="{{ url_for('topic_page', slug=slug) }}">
+      {{ topic_tile(slug, 'md') }}
+      <span class="topic-name">{{ topic_label(slug) }}</span>
+      <span class="topic-count">{{ topic_counts.get(slug, 0) }}</span>
+    </a>
+    {% endfor %}
+  </div>
 </section>
 
 <section class="section process">
   <div class="wrap">
-    <h2>{{ t('how_title') }}</h2>
+    <h2 class="reveal">{{ t('how_title') }}</h2>
     <ol class="steps">
       {% for i in range(1, 6) %}
-      <li><span class="step-n">{{ i }}</span><h3>{{ t('how_' ~ i ~ '_t') }}</h3><p>{{ t('how_' ~ i ~ '_d') }}</p></li>
+      <li class="reveal"><span class="step-n">{{ i }}</span><h3>{{ t('how_' ~ i ~ '_t') }}</h3><p>{{ t('how_' ~ i ~ '_d') }}</p></li>
       {% endfor %}
     </ol>
   </div>
@@ -59,7 +161,7 @@
   </div>
   <div class="news-grid">
     {% for n in news %}
-    <a class="news-card" href="{{ url_for('news_item', news_id=n.id) }}">
+    <a class="news-card reveal" href="{{ url_for('news_item', news_id=n.id) }}">
       <time datetime="{{ n.created_at[:10] }}">{{ fmt_date(n.created_at) }}</time>
       <strong>{{ L(n, 'title') }}</strong>
       {% if L(n, 'body') %}<span>{{ L(n, 'body')|truncate(140) }}</span>{% endif %}
@@ -74,11 +176,11 @@
     <h2>{{ t('latest_acts') }}</h2>
     <a href="{{ url_for('registry', slug='acts') }}">{{ t('all') }} →</a>
   </div>
-  <ul class="act-list">
+  <ul class="act-list reveal">
     {% for d in latest_acts %}
     <li>
       <a href="{{ url_for('document', doc_id=d.id) }}">
-        <span class="act-meta">{{ doc_type_label(d.doc_type) }}{% if d.number %} · № {{ d.number }}{% endif %} · {{ fmt_date(d.doc_date) }}</span>
+        <span class="act-meta">{{ doc_type_label(d.doc_type) }}{% if d.number %} · № {{ d.number }}{% endif %} · {{ fmt_date(d.doc_date) }}{% if d.topic %} · {{ topic_label(d.topic) }}{% endif %}</span>
         <span class="act-title">{{ L(d, 'title') }}</span>
       </a>
     </li>

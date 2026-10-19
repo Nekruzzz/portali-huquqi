@@ -42,6 +42,19 @@ A rebuild of the Internet portal of legal information of the Republic of Tajikis
 - **Accessibility**: larger text (A+/A−), high-contrast mode, works without JavaScript, keyboard friendly.
 - **Open data**: JSON API, Atom feed, sitemap. Audit log of all admin actions.
 
+### Ideas adopted from comparable portals
+
+| Portal | Idea | Here |
+|---|---|---|
+| regulations.gov (USA) | "Comments due soon", "Newly posted", comment tracking numbers | Home tabs *Closing soon / New / Most discussed*; every proposal gets a receipt number |
+| regulation.gov.ru (Russia) | Project ID, stage indicator, view and vote counters | Registry code (`02/26-00007`, searchable), 4-step stage tracker, views counter |
+| EU "Have your say" | Browse by topic, stage timeline | 12 policy topics with Settings-style icons, `/topics`, `/topic/<slug>` |
+| Open NLA (Kazakhstan) | "Comment" button next to each clause | "Propose" button beside every article of a draft |
+| legislation.gov.uk (UK) | Banner on whether the text is up to date | Status banner on adopted acts (in force / amended / repealed) |
+
+Design: bento-grid home page, Apple Watch-style countdown rings, Spotlight-style search suggestions
+(`/api/suggest`), segmented controls with a sliding thumb, scroll reveal (off under Reduce Motion).
+
 ## Run locally
 
 ```bash

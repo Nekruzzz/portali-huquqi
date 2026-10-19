@@ -397,6 +397,80 @@ def test_reminders_and_migration():
         portal.DB_PATH = saved
 
 
+def test_peer_portal_features():
+    c = APP.test_client()
+    # topics browsing
+    assert c.get("/topics").status_code == 200
+    assert c.get("/topic/finance").status_code == 200 and c.get("/topic/nope").status_code == 404
+    assert "Кодекси андози" in c.get("/topic/finance").get_data(as_text=True)
+    # suggestions and registry-number lookup
+    sug = c.get("/api/suggest?q=андози").get_json()
+    assert sug["items"] and sug["items"][0]["code"].startswith("02/")
+    code = sug["items"][0]["code"]
+    hit = c.get("/api/documents?q=" + code).get_json()
+    assert hit["total"] == 1 and hit["items"][0]["code"] == code
+    # home tabs and bento render
+    home = c.get("/").get_data(as_text=True)
+    assert 'id="panel-closing"' in home and "tile-feature" in home and "topic-grid" in home
+    # document page: stage tracker, code, views counter
+    did = doc_id("Кодекси андози")
+    before = c.get(f"/api/documents/{did}").get_json()["views"]
+    page = c.get(f"/doc/{did}").get_data(as_text=True)
+    assert 'class="stages' in page and code in page and "propose-here" in page
+    assert c.get(f"/api/documents/{did}").get_json()["views"] == before + 1
+    # article preselected from the per-article button
+    u = make_active_user("receipt@example.tj")
+    page = u.get(f"/doc/{did}", query_string={"article": "Моддаи 2. Мӯҳлатҳо"}).get_data(as_text=True)
+    assert "<option selected>Моддаи 2. Мӯҳлатҳо</option>" in page
+    # proposal receipt number
+    r = u.post(f"/doc/{did}/comment", data={"csrf_token": csrf(u, f"/doc/{did}"), "body": "Пешниҳоди санҷишӣ барои рақам"},
+               follow_redirects=True)
+    assert code + "/" in r.get_data(as_text=True)
+    # act status banner
+    act = doc_id("Тартиби пешбурди")
+    assert "status-banner" in c.get(f"/doc/{act}").get_data(as_text=True)
+    # sorting by most discussed works
+    assert c.get("/api/documents?sort=discussed").status_code == 200
+
+
+def test_qa_regressions():
+    c = APP.test_client()
+    # same-site redirects only (backslash tricks, schemes, protocol-relative)
+    for nxt in ("//evil.com", "/\\evil.com", "https://evil.com", "javascript:alert(1)", "/%5Cevil.com"):
+        loc = c.get("/lang/ru", query_string={"next": nxt}).headers["Location"]
+        assert "evil" not in loc and "javascript" not in loc, (nxt, loc)
+    assert c.get("/lang/tj", query_string={"next": "/acts?year=2018"}).headers["Location"].endswith("/acts?year=2018")
+    # e-mail subjects cannot carry injected headers
+    with APP.test_request_context():
+        import flask
+        portal.queue_mail("x@y.tj", "ru", "mail_answer_s", "mail_answer_b", footer=False,
+                          subject="Hi\r\nBcc: victim@evil.tj", answer="ok", site="P")
+        portal.get_db().commit()
+        flask.g.pop("mail_queued", None)
+    import sqlite3
+    conn = sqlite3.connect(portal.DB_PATH)
+    subj = conn.execute("SELECT subject FROM outbox WHERE to_email='x@y.tj'").fetchone()[0]
+    conn.close()
+    assert "\n" not in subj and "\r" not in subj
+    # one h1 per page and a heading before result lists
+    for path in ("/", "/drafts", "/acts", "/search?q=x", "/topics", "/topic/health", "/stats"):
+        html = c.get(path).get_data(as_text=True)
+        assert html.count("<h1") == 1, path
+    assert '<h2 class="result-count"' in c.get("/drafts").get_data(as_text=True)
+    # flash messages render as dismissible toasts
+    u = make_active_user("toast@example.tj")
+    did = doc_id("Кодекси андози")
+    r = u.post(f"/doc/{did}/comment", data={"csrf_token": csrf(u, f"/doc/{did}"), "body": "Санҷиши паём"}, follow_redirects=True)
+    assert 'class="flash flash-success toast"' in r.get_data(as_text=True)
+    # helpful empty states in the account
+    acc = make_active_user("empty@example.tj").get("/account").get_data(as_text=True)
+    assert "empty-rich" in acc
+    # security headers
+    h = c.get("/").headers
+    assert h["X-Frame-Options"] == "DENY" and "Permissions-Policy" in h
+    assert "Strict-Transport-Security" in c.get("/", headers={"X-Forwarded-Proto": "https"}).headers
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in list(globals().items()):
