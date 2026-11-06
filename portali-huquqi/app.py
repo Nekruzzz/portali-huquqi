@@ -110,6 +110,10 @@ app.config.update(
     # serverless instances may freeze after the response, so send mail before returning there
     MAIL_SYNC=os.environ.get("MAIL_SYNC") == "1" or ON_VERCEL,
 )
+if os.environ.get("TRUST_PROXY") == "1":
+    # Behind exactly one reverse proxy (Caddy in deploy/): take scheme, host and client IP from its headers.
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +150,8 @@ MIGRATIONS = {
 def init_db():
     """Create missing tables and add columns introduced after the first release."""
     conn = sqlite3.connect(DB_PATH)
+    # WAL lets readers and a writer work at the same time (several gunicorn workers); the setting is stored in the file.
+    conn.execute("PRAGMA journal_mode=WAL")
     existing = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     for table, cols in MIGRATIONS.items():
         if table in existing:

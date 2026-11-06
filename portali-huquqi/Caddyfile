@@ -1,0 +1,14 @@
+# SITE_ADDRESS comes from .env:
+#   new.portali-huquqi.tj                      -> test address, HTTPS certificate obtained automatically
+#   portali-huquqi.tj, www.portali-huquqi.tj   -> after the switch
+#   :80                                        -> plain HTTP by IP, before any domain points here
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy app:8000 {
+		# overwrite whatever the client sent, so the app sees the real visitor address
+		header_up X-Real-IP {remote_host}
+	}
+	request_body {
+		max_size 25MB
+	}
+}

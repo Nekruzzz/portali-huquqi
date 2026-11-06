@@ -72,6 +72,21 @@ Existing databases are upgraded automatically when the new version starts.
 Log in as admin → Идоракунӣ → Танзимот → upload the logo (PNG, SVG, JPG or WEBP, up to 1 MB).
 It appears in the header, footer and browser tab. Use the official file supplied by the organisation that operates the portal.
 
+## Deploy on a server (Docker) — recommended for production
+
+One Ubuntu server with Docker runs the portal, a scheduler (e-mail every 10 minutes, consultation reminders)
+and Caddy, which obtains and renews the HTTPS certificate automatically. Data stays in the `portal-data` volume.
+
+```bash
+cp .env.example .env        # set SITE_ADDRESS, BASE_URL, SECRET_KEY, COOKIE_SECURE
+docker compose up -d --build
+docker compose exec app flask --app app create-admin admin@example.tj
+./backup.sh                 # nightly from cron, keeps 14 days in ./backups
+```
+
+Step-by-step instructions in Russian for the people on site (old server, backups, new server, DNS):
+[`../docs/instruktsiya-perenos-ru.md`](../docs/instruktsiya-perenos-ru.md).
+
 ## Deploy on Vercel
 
 1. Push this folder to a GitHub repository and import it in Vercel (Add New → Project). No build settings are needed: Vercel finds `app.py`.
