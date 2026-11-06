@@ -84,9 +84,6 @@ docker compose exec app flask --app app create-admin admin@example.tj
 ./backup.sh                 # nightly from cron, keeps 14 days in ./backups
 ```
 
-Step-by-step instructions in Russian for the people on site (old server, backups, new server, DNS):
-[`../docs/instruktsiya-perenos-ru.md`](../docs/instruktsiya-perenos-ru.md).
-
 ## Deploy on Vercel
 
 1. Push this folder to a GitHub repository and import it in Vercel (Add New → Project). No build settings are needed: Vercel finds `app.py`.
