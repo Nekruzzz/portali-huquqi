@@ -153,6 +153,15 @@ MIGRATIONS = {
 }
 
 
+# rows carry whole legal texts, so counts and filters must be answered from indexes
+INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_documents_legal ON documents (kind, published, legal_status)",
+    "CREATE INDEX IF NOT EXISTS idx_documents_topic ON documents (published, topic)",
+    "CREATE INDEX IF NOT EXISTS idx_documents_dev ON documents (kind, published, developer_tj)",
+    "CREATE INDEX IF NOT EXISTS idx_documents_posted ON documents (kind, created_at)",
+)
+
+
 def init_db():
     """Create missing tables and add columns introduced after the first release."""
     conn = sqlite3.connect(DB_PATH)
@@ -167,6 +176,11 @@ def init_db():
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
     with open(os.path.join(BASE_DIR, "schema.sql"), encoding="utf-8") as f:
         conn.executescript(f.read())
+    for ddl in INDEXES:
+        try:
+            conn.execute(ddl)
+        except sqlite3.OperationalError as e:  # a column missing in a very old database
+            print(f"Index skipped: {e}")
     try:
         conn.execute(FTS_DDL)
         # re-index when the way text is indexed changes
