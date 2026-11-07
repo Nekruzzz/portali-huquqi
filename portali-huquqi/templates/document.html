@@ -2,6 +2,9 @@
 {% from '_macros.html' import status_badge, legal_badge, countdown, csrf with context %}
 {% from '_icons.html' import glyph, topic_chip, stage_tracker with context %}
 {% block title %}{{ L(doc, 'title')|truncate(80) }}{% endblock %}
+{% block description %}{{ description or L(doc, 'title') }}{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block head_extra %}{% if jsonld %}<script type="application/ld+json">{{ jsonld|tojson }}</script>{% endif %}{% endblock %}
 {% block content %}
 {% set has_text = blocks or body_html %}
 {% set visible_comments = comments|selectattr('status', 'equalto', 'visible')|list %}
@@ -111,6 +114,7 @@
         </li>{% endif %}
         {% if versions %}<li><a href="#versions">{{ t('versions') }} ({{ versions|length + 1 }})</a></li>{% endif %}
         {% if has_links %}<li><a href="#amendments">{{ t('amendments') }}</a></li>{% endif %}
+        {% if refs.out_n or refs.in_n %}<li><a href="#references">{{ t('references') }} ({{ refs.out_n + refs.in_n }})</a></li>{% endif %}
         {% if attachments or doc.source_url %}<li><a href="#files">{{ t('attachments') }}</a></li>{% endif %}
         {% if parent or children %}<li><a href="#lifecycle">{{ t('lifecycle') }}</a></li>{% endif %}
         {% if doc.kind != 'act' %}<li><a href="#comments">{{ t('comments') }} ({{ visible_comments|length }})</a></li>{% endif %}
@@ -202,6 +206,13 @@
       </div>
       {% elif on_date %}<p class="note">{{ t('no_version_on_date') }}</p>{% endif %}
       {% if body_fallback %}<p class="note">{{ t('text_missing_lang') }}</p>{% endif %}
+      {% if toc|length > 3 %}
+      <details class="toc-mobile">
+        <summary>{{ t('on_this_page') }} · {{ toc|length }}</summary>
+        {% set top = toc|map(attribute='level')|min %}
+        <ul class="plain">{% for h in toc %}<li class="toc-l{{ [h.level - top, 2]|min }}"><a href="#{{ h.id }}">{{ h.text|truncate(70) }}</a></li>{% endfor %}</ul>
+      </details>
+      {% endif %}
       {% if body_html %}<div class="legal-html">{{ body_html|safe }}</div>{% endif %}
       {% for b in blocks %}
         {% if b.type == 'h' %}<h3 id="{{ b.id }}" class="article-h"><span>{{ b.text }}</span>
@@ -252,6 +263,25 @@
             <span class="act-title">{{ L(r, 'title') }}</span></a></li>
           {% endfor %}
         </ul>
+        {% endif %}
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if refs.out_n or refs.in_n %}
+    <section id="references" class="doc-section">
+      <h2>{{ t('references') }}</h2>
+      {% for key, label, n in (('in', 'refs_in', refs.in_n), ('out', 'refs_out', refs.out_n)) %}
+        {% if refs[key] %}
+        <h3>{{ t(label) }} <span class="muted">({{ n }})</span></h3>
+        <ul class="act-list">
+          {% for r in refs[key] %}
+          <li><a href="{{ url_for('document', doc_id=r.id) }}">
+            <span class="act-meta">{{ doc_type_label(r.doc_type) or t('kind_' ~ r.kind) }}{% if r.number %} · № {{ r.number }}{% endif %}{% if r.doc_date %} · {{ fmt_date(r.doc_date) }}{% endif %}</span>
+            <span class="act-title">{{ L(r, 'title') }}</span></a></li>
+          {% endfor %}
+        </ul>
+        {% if n > refs[key]|length %}<p class="small muted">{{ t('refs_more').format(n=n - refs[key]|length) }}</p>{% endif %}
         {% endif %}
       {% endfor %}
     </section>

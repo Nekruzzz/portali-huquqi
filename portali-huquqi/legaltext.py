@@ -132,6 +132,14 @@ def legacy_ids_in(body_html):
     return {int(m.group(1)) for m in LEGACY_HREF.finditer(body_html or "")}
 
 
+PORTAL_HREF = re.compile(r'href="/doc/(\d+)(?:[#?][^"]*)?"')
+
+
+def references(body_html):
+    """(old-portal act numbers, portal document ids) that a text links to."""
+    return legacy_ids_in(body_html), {int(m.group(1)) for m in PORTAL_HREF.finditer(body_html or "")}
+
+
 def resolve_links(body_html, mapping, doc_url):
     """Point links to old-portal acts straight at their new pages (mapping: asosi_id -> document id).
     Acts not imported yet keep the old address, which the portal redirects once they arrive."""

@@ -182,6 +182,12 @@ def init_db():
         except sqlite3.OperationalError as e:  # a column missing in a very old database
             print(f"Index skipped: {e}")
     try:
+        if not conn.execute("SELECT value FROM settings WHERE key='refs_version'").fetchone():
+            refs_sync(conn)
+            conn.execute("INSERT INTO settings (key, value) VALUES ('refs_version', '1')")
+    except sqlite3.OperationalError as e:  # a column missing in a very old database
+        print(f"Links between texts not indexed: {e}")
+    try:
         conn.execute(FTS_DDL)
         # re-index when the way text is indexed changes
         have = conn.execute("SELECT value FROM settings WHERE key='fts_version'").fetchone()
@@ -244,6 +250,30 @@ def fts_sync(conn, ids=None):
         return True
     except sqlite3.OperationalError:
         return False
+
+
+def refs_sync(conn, ids=None):
+    """Rebuild the list of links inside the texts of the given documents (all when ids is None)."""
+    if ids is None:
+        conn.execute("DELETE FROM doc_refs")
+        rows = conn.execute("SELECT id, body_tj, body_ru FROM documents WHERE body_format='html'")
+    else:
+        ids = list(ids)
+        if not ids:
+            return
+        marks = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM doc_refs WHERE from_id IN ({marks})", ids)
+        rows = conn.execute(f"SELECT id, body_tj, body_ru FROM documents WHERE body_format='html' AND id IN ({marks})",
+                            ids)
+    out = []
+    for r in rows.fetchall():
+        legacy, local = set(), set()
+        for body in (r[1], r[2]):
+            lg, lc = legaltext.references(body)
+            legacy |= lg
+            local |= lc
+        out += [(r[0], x, None) for x in legacy] + [(r[0], None, x) for x in local if x != r[0]]
+    conn.executemany("INSERT INTO doc_refs (from_id, to_legacy, to_id) VALUES (?,?,?)", out)
 
 
 def fts_ready(db):
@@ -607,7 +637,7 @@ def headers(resp):
 def inject():
     s = get_settings()
     logo = s.get("logo_file")
-    return dict(t=t, L=L, lang=current_lang(), LANGS=LANGS, DOC_TYPES=DOC_TYPES, KINDS=KINDS,
+    return dict(t=t, L=L, lang=current_lang(), alt_url=alt_url, LANGS=LANGS, DOC_TYPES=DOC_TYPES, KINDS=KINDS,
                 LEGAL_STATUSES=LEGAL_STATUSES, fmt_date=fmt_date, doc_type_label=doc_type_label,
                 csrf_token=csrf_token, SLUG_OF_KIND=SLUG_OF_KIND, consult_info=consult_info, today=today(),
                 is_fallback=is_fallback, detail_label=lambda k: detail_label(k, current_lang()),
@@ -618,6 +648,34 @@ def inject():
                 contact_address=(s.get("contact_address_ru") if current_lang() == "ru"
                                  and s.get("contact_address_ru") else s.get("contact_address_tj"))
                 or t("contact_addr"))
+
+
+def alt_url(code):
+    """This page in the given language (the language is kept in the session, ?lang= switches it)."""
+    from urllib.parse import urlencode
+    args = request.args.to_dict(flat=False)
+    args["lang"] = [code]
+    args.pop("page", None) if args.get("page") == ["1"] else None
+    return request.base_url + "?" + urlencode(args, doseq=True)
+
+
+LEGAL_FORCE = {"in_force": "InForce", "partly": "PartiallyInForce", "repealed": "NotInForce"}
+
+
+def legislation_jsonld(doc, description):
+    """schema.org/Legislation data for an adopted act (read by search engines)."""
+    lang = current_lang()
+    data = {"@context": "https://schema.org", "@type": "Legislation", "name": L(doc, "title"),
+            "url": url_for("document", doc_id=doc["id"], _external=True), "inLanguage": "tg" if lang == "tj" else "ru",
+            "legislationJurisdiction": "TJ", "legislationType": doc_type_label(doc["doc_type"]) or None,
+            "legislationIdentifier": doc["number"], "legislationDate": doc["doc_date"],
+            "legislationLegalForce": LEGAL_FORCE.get(doc["legal_status"] or "in_force"),
+            "description": description or None}
+    if L(doc, "developer"):
+        data["legislationPassedBy"] = {"@type": "Organization", "name": L(doc, "developer")}
+    if doc["effective_date"]:
+        data["legislationDateVersion"] = doc["revision_date"] or doc["effective_date"]
+    return {k: v for k, v in data.items() if v}
 
 
 @app.template_filter("snippet")
@@ -890,6 +948,25 @@ def search():
                            developers=developers_list(), pages=max((total + PER_PAGE - 1) // PER_PAGE, 1))
 
 
+REFS_SHOWN = 60
+
+
+def references_of(doc):
+    """Acts this document's text links to, and documents whose texts link to it (the old portal's two tabs)."""
+    db = get_db()
+    cols = "d.id, d.kind, d.doc_type, d.number, d.doc_date, d.title_tj, d.title_ru"
+    out_q = (f"SELECT DISTINCT {cols} FROM doc_refs r JOIN documents d ON d.published=1 AND "
+             "(d.id=r.to_id OR (d.kind='act' AND d.legacy_id=r.to_legacy)) WHERE r.from_id=? AND d.id<>?")
+    in_q = (f"SELECT DISTINCT {cols} FROM doc_refs r JOIN documents d ON d.id=r.from_id AND d.published=1 "
+            "WHERE (r.to_id=? OR (r.to_legacy IS NOT NULL AND r.to_legacy=?)) AND d.id<>?")
+    out_all = db.execute(out_q + " ORDER BY d.doc_date DESC", (doc["id"], doc["id"])).fetchall()
+    legacy = doc["legacy_id"] if doc["kind"] == "act" else None
+    in_n = db.execute(f"SELECT COUNT(*) FROM ({in_q})", (doc["id"], legacy, doc["id"])).fetchone()[0]
+    in_rows = db.execute(in_q + f" ORDER BY d.doc_date DESC LIMIT {REFS_SHOWN}",
+                         (doc["id"], legacy, doc["id"])).fetchall()
+    return {"out": out_all[:REFS_SHOWN], "out_n": len(out_all), "in": in_rows, "in_n": in_n}
+
+
 def versions_of(doc):
     return get_db().execute(
         "SELECT id, valid_from, valid_to, note, created_at FROM document_versions WHERE document_id=? "
@@ -993,6 +1070,10 @@ def document(doc_id):
         links["amends" if r["link_type"] == "amends" else "repeals"].append(r)
     votes = {r["value"]: r["n"] for r in db.execute(
         "SELECT value, COUNT(*) n FROM votes WHERE document_id=? GROUP BY value", (doc_id,))}
+    refs = references_of(doc)
+    plain = L(doc, "summary") or (legaltext.to_text(body) if src["body_format"] == "html" else body or "")
+    description = " ".join(plain.split())[:200]
+    jsonld = legislation_jsonld(doc, description) if doc["kind"] == "act" else None
     ua = (request.user_agent.string or "").lower()
     if doc["published"] and not can_edit(doc) and not any(b in ua for b in ("bot", "spider", "crawl")):
         db.execute("UPDATE documents SET views=views+1 WHERE id=?", (doc_id,))
@@ -1008,7 +1089,8 @@ def document(doc_id):
                            display_name=display_name, blocks=blocks, links=links,
                            body_fallback=bool(body) and not src[f"body_{lang}"], body_html=body_html, toc=toc,
                            version=version, versions=versions_of(doc), on_date=request.args.get("on", ""),
-                           prev_html=render_prev(doc), keywords=split_keywords(L(doc, "keywords")),
+                           prev_html=render_prev(doc), keywords=split_keywords(L(doc, "keywords")), refs=refs,
+                           description=description, jsonld=jsonld,
                            consult=consult_info(doc), can_edit=can_edit(doc),
                            votes_for=votes.get(1, 0), votes_against=votes.get(-1, 0), my_vote=my_vote,
                            following=following, article_options=article_options(doc, toc),
@@ -1731,6 +1813,7 @@ def edit_document(doc_id=None):
                 save_links(new_id, "repeals", parse_ids(f.get("repeals")))
             save_uploads(new_id)
             fts_sync(db, [new_id])
+            refs_sync(db, [new_id])
             # notifications
             new = get_document(new_id)
             if new["published"] and (not doc or not doc["published"]):
@@ -2406,6 +2489,7 @@ def cli_import_legacy(path, files_dir):
     conn.row_factory = sqlite3.Row
     for i in range(0, len(counts["ids"]), 500):
         fts_sync(conn, counts["ids"][i:i + 500])
+        refs_sync(conn, counts["ids"][i:i + 500])
     conn.commit()
     conn.close()
     counts.pop("ids")

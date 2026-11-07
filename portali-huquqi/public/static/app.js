@@ -111,6 +111,9 @@ document.addEventListener("DOMContentLoaded", () => {
   initReveal();
   document.querySelectorAll("form.js-suggest").forEach(initSuggest);
   document.querySelectorAll("form.filters").forEach(initFilterFold);
+  // choosing an entry in the phone contents closes the list
+  document.querySelectorAll(".toc-mobile a").forEach((a) =>
+    a.addEventListener("click", () => a.closest("details").removeAttribute("open")));
 });
 
 // ---------- phones: only the search box shows; the other filters open with one tap ----------

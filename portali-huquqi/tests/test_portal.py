@@ -219,7 +219,8 @@ def test_new_public_pages():
     assert "1414" in c.get("/search?q=маблағгузорӣ&fulltext=1&kind=act").get_data(as_text=True)
     did = doc_id("Қонуни Ҷумҳурии Тоҷикистон «Дар бораи санадҳои")
     r = c.get(f"/doc/{did}.txt")
-    assert r.status_code == 200 and "Моддаи 39" in r.get_data(as_text=True)
+    txt = r.get_data(as_text=True)  # the client is in Russian here; the real Russian text has "Статья 39"
+    assert r.status_code == 200 and ("Моддаи 39" in txt or "Статья 39" in txt)
     assert "Ахбори" in c.get(f"/doc/{did}").get_data(as_text=True)
 
 
@@ -533,6 +534,9 @@ def test_html_act_text_versions_and_export():
     assert f'href="/doc/{law}#A000000004"' in page
     assert 'class="lt-dname"' in page and 'colspan="2"' in page
     assert "Ҳуқуқи маъмурӣ" in page and "23.05.2021" in page and "заминҷунбӣ</a>" in page
+    # search engines: canonical address, both languages, structured data for the act
+    assert f'rel="canonical" href="http://localhost/doc/{new_id}?lang=tj"' in page and 'hreflang="ru"' in page
+    assert '"@type": "Legislation"' in page and '"legislationIdentifier": "1416"' in page
     assert "Таҳрирҳо" not in page  # no earlier wordings yet
     # old address of this act now finds it
     assert c.get("/publicadliya/view_qonunhoview.php?asosi_id=19898").headers["Location"].endswith(f"/doc/{new_id}")
@@ -647,6 +651,7 @@ def test_legacy_import_from_jsonl():
     conn = sqlite3.connect(portal.DB_PATH)
     conn.row_factory = sqlite3.Row
     portal.fts_sync(conn, again["ids"])
+    portal.refs_sync(conn, again["ids"])
     conn.commit()
     act = conn.execute("SELECT * FROM documents WHERE kind='act' AND legacy_id=700001").fetchone()
     assert act["doc_date"] == "2020-02-01" and act["mj_reg_date"] == "2020-02-03" and act["doc_type"] == "law"
@@ -661,6 +666,9 @@ def test_legacy_import_from_jsonl():
     page = c.get(f"/doc/{act['id']}").get_data(as_text=True)
     assert "Қонуни ҶТ оид ба ворид намудани тағйирот" in page  # amended-by list
     assert "Таҳрирҳо" in page
+    # links inside texts, both ways
+    assert 'id="references"' in page and "Ҳуҷҷатҳое, ки ба ин санад ишора мекунанд" in page
+    assert "Ҳуҷҷатҳое, ки дар матн зикр шудаанд" in amending
     assert "фосфоритӣ" in c.get("/acts?q=фосфорити&fulltext=1").get_data(as_text=True)
     plan_page = c.get(f"/doc/{plan['id']}").get_data(as_text=True)
     assert "Тамоси таҳиякунанда" in plan_page and "ш. Душанбе, 123" in plan_page

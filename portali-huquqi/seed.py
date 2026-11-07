@@ -6,6 +6,7 @@ Everything marked "Намуна / Демо" is placeholder content to be deleted
 management panel or replaced by an import of the Ministry of Justice database.
 """
 import json
+import os
 import secrets
 import sqlite3
 from datetime import date, timedelta
@@ -199,6 +200,17 @@ def seed_demo(db_path):
                            ("%таҳлили таъсири%", "economy"), ("%Портали интернетӣ%", "digital"),
                            ("%Интернет-портали%", "digital")):
         cur.execute("UPDATE documents SET topic=? WHERE topic IS NULL AND title_tj LIKE ?", (topic, pattern))
+
+    # Full official texts (Tajik and Russian) and reference cards of the real acts, as kept in the
+    # Ministry of Justice database of the previous portal (seed_texts.json, cleaned HTML).
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seed_texts.json")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            for legacy_id, fields in json.load(f).items():
+                fields = {k: v for k, v in fields.items() if v}
+                sets = ", ".join(f"{k}=?" for k in fields)
+                cur.execute(f"UPDATE documents SET {sets}, body_format='html' WHERE kind='act' AND legacy_id=?",
+                            list(fields.values()) + [int(legacy_id)])
     conn.commit()
     conn.close()
     return act617

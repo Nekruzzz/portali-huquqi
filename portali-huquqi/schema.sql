@@ -121,6 +121,16 @@ CREATE TABLE IF NOT EXISTS doc_links (
 );
 CREATE INDEX IF NOT EXISTS idx_links_to ON doc_links (to_id);
 
+-- links inside texts: document from_id refers to an old-portal act (to_legacy) or a portal document (to_id)
+CREATE TABLE IF NOT EXISTS doc_refs (
+    from_id    INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    to_legacy  INTEGER,
+    to_id      INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_refs_from ON doc_refs (from_id);
+CREATE INDEX IF NOT EXISTS idx_refs_legacy ON doc_refs (to_legacy);
+CREATE INDEX IF NOT EXISTS idx_refs_to ON doc_refs (to_id);
+
 CREATE TABLE IF NOT EXISTS attachments (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     document_id   INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,

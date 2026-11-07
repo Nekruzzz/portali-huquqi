@@ -6,7 +6,19 @@
   <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <title>{% block title %}{{ t('site_name') }}{% endblock %} · {{ t('site_tagline') }}</title>
-  <meta name="description" content="{{ t('site_tagline') }}">
+  {% set page_description %}{% block description %}{{ t('site_tagline') }}{% endblock %}{% endset %}
+  <meta name="description" content="{{ page_description|trim }}">
+  <link rel="canonical" href="{{ alt_url(lang) }}">
+  <link rel="alternate" hreflang="tg" href="{{ alt_url('tj') }}">
+  <link rel="alternate" hreflang="ru" href="{{ alt_url('ru') }}">
+  <link rel="alternate" hreflang="x-default" href="{{ alt_url('tj') }}">
+  <meta property="og:site_name" content="{{ t('site_tagline') }}">
+  <meta property="og:title" content="{{ self.title()|trim }}">
+  <meta property="og:description" content="{{ page_description|trim }}">
+  <meta property="og:url" content="{{ alt_url(lang) }}">
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+  <meta property="og:locale" content="{{ 'tg_TJ' if lang == 'tj' else 'ru_RU' }}">
+  {% block head_extra %}{% endblock %}
   <meta name="color-scheme" content="light dark">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="alternate" type="application/atom+xml" title="{{ t('feed') }}" href="{{ url_for('feed') }}">
