@@ -650,8 +650,12 @@ def can_edit(doc):
 # Queries
 # ---------------------------------------------------------------------------
 def search_documents(kind=None, q="", doc_type="", year="", status="", sort="new", page=1, per_page=PER_PAGE,
-                     owner_id=None, include_hidden=False, developer="", legal="", fulltext=False, topic=""):
+                     owner_id=None, include_hidden=False, developer="", legal="", fulltext=False, topic="",
+                     kinds=None):
     where, params = [], []
+    if kinds:  # several registers at once, e.g. plans and drafts on the home page
+        where.append(f"d.kind IN ({','.join('?' * len(kinds))})")
+        params.extend(kinds)
     m = CODE_RE.match(q or "")
     if m:  # a registry number was typed: jump straight to that document
         where.append("d.id=?")
@@ -797,19 +801,18 @@ def index():
     db = get_db()
     counts = {k: db.execute("SELECT COUNT(*) FROM documents WHERE kind=? AND published=1", (k,)).fetchone()[0]
               for k in KINDS}
-    closing, n_open = search_documents(status="consultation", sort="closing", per_page=6)
-    newest, _ = search_documents(sort="posted", per_page=6, status="")
-    newest = [d for d in newest if d["kind"] != "act"][:6] or newest
-    discussed, _ = search_documents(sort="discussed", per_page=6)
-    discussed = [d for d in discussed if d["kind"] != "act"][:6]
+    consult_kinds = ("plan", "draft")  # acts never go through consultation; there may be tens of thousands
+    closing, n_open = search_documents(status="consultation", sort="closing", per_page=6, kinds=consult_kinds)
+    newest, _ = search_documents(sort="posted", per_page=6, kinds=consult_kinds)
+    discussed, _ = search_documents(sort="discussed", per_page=6, kinds=consult_kinds)
     latest_acts, _ = search_documents(kind="act", per_page=5)
     news = db.execute("SELECT * FROM news WHERE published=1 ORDER BY created_at DESC LIMIT 3").fetchall()
     week = (today() + timedelta(days=7)).isoformat()
     closing_week = sum(1 for d in closing if d["consult_end"] and d["consult_end"] <= week)
     if n_open > len(closing):
         closing_week = db.execute(
-            f"SELECT COUNT(*) FROM documents d WHERE published=1 AND ({status_sql('d')})='consultation' "
-            "AND consult_end <= ?", (week,)).fetchone()[0]
+            f"SELECT COUNT(*) FROM documents d WHERE published=1 AND kind IN ('plan','draft') "
+            f"AND ({status_sql('d')})='consultation' AND consult_end <= ?", (week,)).fetchone()[0]
     c = db.execute("SELECT COUNT(*) total, SUM(c.decision IS NOT NULL) answered FROM comments c "
                    "JOIN documents d ON d.id=c.document_id WHERE c.status='visible' AND d.published=1").fetchone()
     stats_ = {
@@ -1209,8 +1212,8 @@ def stats():
     db = get_db()
     counts = {k: db.execute("SELECT COUNT(*) FROM documents WHERE kind=? AND published=1", (k,)).fetchone()[0]
               for k in KINDS}
-    open_now = db.execute(f"SELECT COUNT(*) FROM documents d WHERE published=1 AND ({status_sql('d')})='consultation'"
-                          ).fetchone()[0]
+    open_now = db.execute(f"SELECT COUNT(*) FROM documents d WHERE published=1 AND kind IN ('plan','draft') "
+                          f"AND ({status_sql('d')})='consultation'").fetchone()[0]
     c = db.execute("SELECT COUNT(*) total, SUM(decision IS NOT NULL) answered, "
                    "SUM(decision IN ('accepted','partial')) accepted, SUM(decision='accepted') full_n, "
                    "SUM(decision='partial') partial, SUM(decision='rejected') rejected "

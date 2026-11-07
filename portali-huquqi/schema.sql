@@ -95,6 +95,11 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_kind_date ON documents (kind, doc_date DESC);
 CREATE INDEX IF NOT EXISTS idx_documents_consult ON documents (consult_end);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_legacy ON documents (kind, legacy_id) WHERE legacy_id IS NOT NULL;
+-- rows carry whole legal texts, so counts and filters must be answered from indexes
+CREATE INDEX IF NOT EXISTS idx_documents_legal ON documents (kind, published, legal_status);
+CREATE INDEX IF NOT EXISTS idx_documents_topic ON documents (published, topic);
+CREATE INDEX IF NOT EXISTS idx_documents_dev ON documents (kind, published, developer_tj);
+CREATE INDEX IF NOT EXISTS idx_documents_posted ON documents (kind, created_at);
 
 -- earlier wordings of a document; the current wording stays in documents.body_*
 CREATE TABLE IF NOT EXISTS document_versions (
