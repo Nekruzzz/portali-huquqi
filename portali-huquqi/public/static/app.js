@@ -83,6 +83,7 @@ document.addEventListener("DOMContentLoaded", () => {
       form.querySelectorAll(".only-consult").forEach((el) => (el.hidden = !isConsult));
       form.querySelectorAll(".only-act").forEach((el) => (el.hidden = kind !== "act"));
       form.querySelectorAll(".only-plan").forEach((el) => (el.hidden = kind !== "plan"));
+      form.querySelectorAll(".only-draft").forEach((el) => (el.hidden = kind !== "draft"));
       const showBiz = kind === "draft" || (kind === "plan" && biz && biz.checked);
       form.querySelectorAll(".det-business").forEach((el) => (el.hidden = !showBiz));
       form.querySelectorAll(".det-ria").forEach((el) => (el.hidden = kind !== "draft"));
@@ -109,7 +110,27 @@ document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   initReveal();
   document.querySelectorAll("form.js-suggest").forEach(initSuggest);
+  document.querySelectorAll("form.filters").forEach(initFilterFold);
 });
+
+// ---------- phones: only the search box shows; the other filters open with one tap ----------
+function initFilterFold(form) {
+  if (!window.matchMedia("(max-width: 759px)").matches) return;
+  const active = [...form.querySelectorAll("select")].filter((s) => s.value).length +
+    (form.querySelector('input[name="fulltext"]:checked') ? 1 : 0);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn btn-ghost filter-toggle";
+  btn.setAttribute("aria-expanded", "false");
+  btn.textContent = (form.dataset.filtersLabel || "Filters") + (active ? " · " + active : "");
+  btn.addEventListener("click", () => {
+    const open = form.classList.toggle("is-open");
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  const q = form.querySelector(".filter-q");
+  q.after(btn);
+  form.classList.add("is-foldable");
+}
 
 // ---------- segmented tabs with a sliding thumb (spring transition in CSS) ----------
 function initTabs() {

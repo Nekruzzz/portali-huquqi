@@ -73,6 +73,20 @@ CREATE TABLE IF NOT EXISTS documents (
     returned_note   TEXT,                  -- notification returned to the developer (item 9)
     topic           TEXT,                  -- policy area, see TOPICS in i18n.py
     views           INTEGER NOT NULL DEFAULT 0,
+    -- record number on the previous portal: asosi_id for acts, reestr_id for plans and drafts
+    legacy_id       INTEGER,
+    body_format     TEXT NOT NULL DEFAULT 'text' CHECK (body_format IN ('text','html')),
+    -- reference card of adopted acts (as in the Ministry of Justice database)
+    repeal_date     TEXT,                  -- date the act lost force
+    revision_date   TEXT,                  -- date of the wording shown as current
+    registered_date TEXT,                  -- date entered in the register
+    classifier_tj   TEXT,                  -- branch of legislation, e.g. "Ҳуқуқи маъмурӣ / Андоз"
+    classifier_ru   TEXT,
+    keywords_tj     TEXT,                  -- comma-separated
+    keywords_ru     TEXT,
+    -- drafts: the wording of the existing act that the draft changes
+    prev_body_tj    TEXT,
+    prev_body_ru    TEXT,
     source_url      TEXT,
     published       INTEGER NOT NULL DEFAULT 1,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -80,6 +94,22 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 CREATE INDEX IF NOT EXISTS idx_documents_kind_date ON documents (kind, doc_date DESC);
 CREATE INDEX IF NOT EXISTS idx_documents_consult ON documents (consult_end);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_legacy ON documents (kind, legacy_id) WHERE legacy_id IS NOT NULL;
+
+-- earlier wordings of a document; the current wording stays in documents.body_*
+CREATE TABLE IF NOT EXISTS document_versions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    body_tj     TEXT,
+    body_ru     TEXT,
+    body_format TEXT NOT NULL DEFAULT 'text',
+    valid_from  TEXT,                      -- first day this wording applied
+    valid_to    TEXT,                      -- first day of the next wording
+    note        TEXT,                      -- e.g. the amending act
+    created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_versions_doc ON document_versions (document_id, valid_from);
 
 -- act X amends / repeals act Y
 CREATE TABLE IF NOT EXISTS doc_links (

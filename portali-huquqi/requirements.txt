@@ -1,3 +1,5 @@
 Flask>=3.0
 gunicorn>=22.0
 tzdata
+nh3>=0.2.17
+python-docx>=1.1

@@ -33,6 +33,7 @@ from flask import (Flask, Response, abort, flash, g, has_request_context, jsonif
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
+import legaltext
 import mailer
 from i18n import (BUSINESS_FIELDS, DETAIL_FIELDS, DOC_TYPES, KIND_CODE, KINDS, LANGS, LEGAL_STATUSES,
                   PLAN_FIELDS, RIA_FIELDS, STAGES, STRINGS, TOPICS, detail_label, tr)
@@ -142,7 +143,11 @@ MIGRATIONS = {
               ("reset_expires", "TEXT"), ("admin_note", "TEXT")],
     "documents": [("legal_status", "TEXT"), ("effective_date", "TEXT"), ("publication_tj", "TEXT"),
                   ("publication_ru", "TEXT"), ("mj_reg_number", "TEXT"), ("mj_reg_date", "TEXT"),
-                  ("returned_note", "TEXT"), ("topic", "TEXT"), ("views", "INTEGER NOT NULL DEFAULT 0")],
+                  ("returned_note", "TEXT"), ("topic", "TEXT"), ("views", "INTEGER NOT NULL DEFAULT 0"),
+                  ("legacy_id", "INTEGER"), ("body_format", "TEXT NOT NULL DEFAULT 'text'"),
+                  ("repeal_date", "TEXT"), ("revision_date", "TEXT"), ("registered_date", "TEXT"),
+                  ("classifier_tj", "TEXT"), ("classifier_ru", "TEXT"), ("keywords_tj", "TEXT"),
+                  ("keywords_ru", "TEXT"), ("prev_body_tj", "TEXT"), ("prev_body_ru", "TEXT")],
     "comments": [("article_ref", "TEXT")],
 }
 
@@ -161,8 +166,74 @@ def init_db():
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
     with open(os.path.join(BASE_DIR, "schema.sql"), encoding="utf-8") as f:
         conn.executescript(f.read())
+    try:
+        conn.execute(FTS_DDL)
+    except sqlite3.OperationalError as e:  # SQLite built without FTS5: search falls back to LIKE
+        print(f"Full-text search unavailable: {e}")
     conn.commit()
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Full-text search (SQLite FTS5). Bodies stored as HTML are indexed as plain text.
+# remove_diacritics folds ӣ/ӯ into и/у, so either spelling finds the word.
+# ---------------------------------------------------------------------------
+FTS_COLS = ("title_tj", "title_ru", "number", "summary_tj", "summary_ru", "developer_tj", "developer_ru",
+            "keywords", "body_tj", "body_ru")
+FTS_DDL = ("CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5("
+           + ", ".join(FTS_COLS) + ", tokenize=\"unicode61 remove_diacritics 2\")")
+FTS_TITLE_COLS = "{title_tj title_ru number summary_tj summary_ru developer_tj developer_ru keywords}"
+FTS_WEIGHTS = "10.0, 10.0, 8.0, 3.0, 3.0, 2.0, 2.0, 4.0, 1.0, 1.0"
+
+
+def fts_values(row):
+    def text(col):
+        v = row[col] or ""
+        return legaltext.to_text(v) if row["body_format"] == "html" and col.startswith("body_") else v
+    keywords = " ".join(row[c] or "" for c in ("keywords_tj", "keywords_ru", "classifier_tj", "classifier_ru"))
+    return [text(c) if c != "keywords" else keywords for c in FTS_COLS]
+
+
+def fts_sync(conn, ids=None):
+    """Re-index the given documents (all when ids is None). Returns False when FTS5 is unavailable."""
+    try:
+        if ids is None:
+            conn.execute("DELETE FROM documents_fts")
+            rows = conn.execute("SELECT * FROM documents")
+        else:
+            ids = list(ids)
+            if not ids:
+                return True
+            marks = ",".join("?" * len(ids))
+            conn.execute(f"DELETE FROM documents_fts WHERE rowid IN ({marks})", ids)
+            rows = conn.execute(f"SELECT * FROM documents WHERE id IN ({marks})", ids)
+        cols = ", ".join(("rowid",) + FTS_COLS)
+        conn.executemany(f"INSERT INTO documents_fts ({cols}) VALUES ({', '.join('?' * (len(FTS_COLS) + 1))})",
+                         ([r["id"]] + fts_values(r) for r in rows.fetchall()))
+        return True
+    except sqlite3.OperationalError:
+        return False
+
+
+def fts_ready(db):
+    """True when the index can be used; re-indexes everything if documents were added outside the app."""
+    try:
+        n_docs = db.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+        n_fts = db.execute("SELECT COUNT(*) FROM documents_fts").fetchone()[0]
+    except sqlite3.OperationalError:
+        return False
+    if n_docs != n_fts:
+        fts_sync(db)
+        db.commit()
+    return True
+
+
+def fts_query(q, fulltext):
+    words = re.findall(r"\w+", (q or "").lower())[:8]
+    if not words:
+        return None
+    match = " ".join(f'"{w}"*' for w in words)
+    return match if fulltext else f"{FTS_TITLE_COLS} : ({match})"
 
 
 def db_is_empty():
@@ -340,8 +411,10 @@ CODE_RE = re.compile(r"^\s*(0[123])/(\d{2})-0*(\d{1,7})\s*$")
 
 
 def doc_code(doc):
-    """Registry number in the style of regulation.gov.ru: <register>/<yy>-<id>, e.g. 02/26-00007."""
-    year = (doc["created_at"] or doc["doc_date"] or "2000")[2:4]
+    """Registry number in the style of regulation.gov.ru: <register>/<yy>-<id>, e.g. 02/26-00007.
+    The year is when a plan or draft was posted; for an adopted act, the year it was adopted."""
+    first = (doc["doc_date"], doc["created_at"]) if doc["kind"] == "act" else (doc["created_at"], doc["doc_date"])
+    year = (first[0] or first[1] or "2000")[2:4]
     return f"{KIND_CODE.get(doc['kind'], '00')}/{year}-{doc['id']:05d}"
 
 
@@ -516,6 +589,18 @@ def inject():
                 or t("contact_addr"))
 
 
+@app.template_filter("snippet")
+def snippet_filter(value):
+    """Search snippet with matches marked (FTS marks them with \\x02 and \\x03)."""
+    from markupsafe import Markup, escape
+    return Markup(str(escape(value or "")).replace("\x02", "<mark>").replace("\x03", "</mark>"))
+
+
+@app.template_filter("snippet_plain")
+def snippet_plain(value):
+    return " ".join((value or "").replace("\x02", "").replace("\x03", "").replace("…", " ").split())
+
+
 def login_required(view):
     @wraps(view)
     def wrapped(*a, **kw):
@@ -591,23 +676,35 @@ def search_documents(kind=None, q="", doc_type="", year="", status="", sort="new
                 "||' '||coalesce(d.developer_tj,'')||' '||coalesce(d.developer_ru,'')")
     if fulltext:
         haystack += "||' '||coalesce(d.body_tj,'')||' '||coalesce(d.body_ru,'')"
-    for tok in (q or "").lower().split()[:8]:
-        tok = tok.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        where.append(f"ulower({haystack}) LIKE ? ESCAPE '\\'")
-        params.append(f"%{tok}%")
+    db = get_db()
+    match = fts_query(q, fulltext) if q and fts_ready(db) else None
+    if not match:
+        for tok in (q or "").lower().split()[:8]:
+            tok = tok.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            where.append(f"ulower({haystack}) LIKE ? ESCAPE '\\'")
+            params.append(f"%{tok}%")
     clause = ("WHERE " + " AND ".join(where)) if where else ""
+    join, extra_cols = "", ""
+    if match:
+        join = (f"JOIN (SELECT rowid, bm25(documents_fts, {FTS_WEIGHTS}) AS rank, "
+                "snippet(documents_fts, -1, char(2), char(3), '…', 18) AS snip "
+                "FROM documents_fts WHERE documents_fts MATCH ?) f ON f.rowid=d.id")
+        params.insert(0, match)
+        extra_cols = ", f.rank AS rank, f.snip AS snip"
+    elif sort == "relevance":
+        sort = "new"
     order = {"old": "d.doc_date ASC, d.id ASC",
              "closing": "CASE WHEN d.consult_end IS NULL THEN 1 ELSE 0 END, d.consult_end ASC",
              "posted": "d.created_at DESC, d.id DESC",
-             "discussed": "n_comments + n_votes DESC, d.views DESC, d.id DESC"}.get(
+             "discussed": "n_comments + n_votes DESC, d.views DESC, d.id DESC",
+             "relevance": "f.rank ASC, d.doc_date DESC"}.get(
         sort, "d.doc_date DESC, d.id DESC")
-    db = get_db()
-    total = db.execute(f"SELECT COUNT(*) FROM documents d {clause}", params).fetchone()[0]
+    total = db.execute(f"SELECT COUNT(*) FROM documents d {join} {clause}", params).fetchone()[0]
     rows = db.execute(
-        f"SELECT d.*, {status_sql('d')} AS status, "
+        f"SELECT d.*, {status_sql('d')} AS status{extra_cols}, "
         f"(SELECT COUNT(*) FROM comments c WHERE c.document_id=d.id AND c.status='visible') AS n_comments, "
         f"(SELECT COUNT(*) FROM votes v WHERE v.document_id=d.id) AS n_votes "
-        f"FROM documents d {clause} ORDER BY {order} LIMIT ? OFFSET ?",
+        f"FROM documents d {join} {clause} ORDER BY {order} LIMIT ? OFFSET ?",
         params + [per_page, (page - 1) * per_page]).fetchall()
     return rows, total
 
@@ -615,7 +712,8 @@ def search_documents(kind=None, q="", doc_type="", year="", status="", sort="new
 def search_args():
     a = request.args
     return dict(q=a.get("q", ""), doc_type=a.get("type", ""), year=a.get("year", ""), status=a.get("status", ""),
-                sort=a.get("sort", "new"), developer=a.get("dev", ""), legal=a.get("legal", ""),
+                sort=a.get("sort") or ("relevance" if a.get("q", "").strip() else "new"),
+                developer=a.get("dev", ""), legal=a.get("legal", ""),
                 fulltext=a.get("fulltext") == "1", topic=a.get("topic", ""))
 
 
@@ -728,9 +826,63 @@ def search():
                            developers=developers_list(), pages=max((total + PER_PAGE - 1) // PER_PAGE, 1))
 
 
-def article_options(doc, blocks):
+def versions_of(doc):
+    return get_db().execute(
+        "SELECT id, valid_from, valid_to, note, created_at FROM document_versions WHERE document_id=? "
+        "ORDER BY coalesce(valid_from, '') DESC, id DESC", (doc["id"],)).fetchall()
+
+
+def selected_version(doc):
+    """?v=<id> shows an earlier wording; ?on=YYYY-MM-DD the wording that applied on that day."""
+    db = get_db()
+    v = request.args.get("v", "")
+    if v.isdigit():
+        return db.execute("SELECT * FROM document_versions WHERE id=? AND document_id=?",
+                          (int(v), doc["id"])).fetchone()
+    on = parse_date(request.args.get("on"))
+    if not on or (doc["revision_date"] and on.isoformat() >= doc["revision_date"]):
+        return None
+    return db.execute(
+        "SELECT * FROM document_versions WHERE document_id=? AND (valid_from IS NULL OR valid_from<=?) "
+        "AND (valid_to IS NULL OR valid_to>?) ORDER BY coalesce(valid_from, '') DESC, id DESC LIMIT 1",
+        (doc["id"], on.isoformat(), on.isoformat())).fetchone()
+
+
+def render_body(doc, body, fmt, propose=False):
+    """Current or earlier wording ready for the page: (html or None, table of contents, plain-text blocks)."""
+    if fmt == "html":
+        ids = legaltext.legacy_ids_in(body)
+        mapping = {}
+        if ids:
+            marks = ",".join("?" * len(ids))
+            mapping = {r["legacy_id"]: r["id"] for r in get_db().execute(
+                f"SELECT id, legacy_id FROM documents WHERE kind='act' AND published=1 AND legacy_id IN ({marks})",
+                list(ids))}
+        body = legaltext.resolve_links(body, mapping, lambda i: url_for("document", doc_id=i))
+        html, toc = legaltext.structure(body, t("propose") if propose else None, t("propose_here"))
+        return html, toc, []
+    blocks = body_blocks(body)
+    return None, [{"id": b["id"], "text": b["text"], "level": 3} for b in blocks if b["type"] == "h"], blocks
+
+
+def render_prev(doc):
+    """Drafts: the wording of the existing act that the draft changes."""
+    lang = current_lang()
+    prev = doc[f"prev_body_{lang}"] or doc["prev_body_tj"]
+    if not prev:
+        return None
+    if doc["body_format"] == "html":
+        return legaltext.structure(prev)[0]
+    return "".join(f"<p>{xml_escape(p)}</p>" for p in re.split(r"\n\s*\n", prev.strip()) if p.strip())
+
+
+def split_keywords(text):
+    return [k.strip() for k in re.split(r"[,;\n]", text or "") if k.strip()]
+
+
+def article_options(doc, toc):
     opts = [t("article_general")]
-    opts += [b["text"][:120] for b in blocks if b["type"] == "h"]
+    opts += [h["text"][:120] for h in toc]
     if doc["kind"] == "draft":
         opts.append(t("ria"))
     return opts
@@ -762,8 +914,11 @@ def document(doc_id):
         fields = []
     detail_rows = [(k, detail_value(details, k)) for k in fields if detail_value(details, k)]
     lang = current_lang()
-    body = doc[f"body_{lang}"] or doc["body_tj"]
-    blocks = body_blocks(body)
+    version = selected_version(doc)
+    src = version or doc
+    body = src[f"body_{lang}"] or src["body_tj"]
+    body_html, toc, blocks = render_body(doc, body, src["body_format"],
+                                         propose=doc["status"] == "consultation" and not version)
     links = {"amended_by": [], "amends": [], "repealed_by": [], "repeals": []}
     for r in db.execute("SELECT l.link_type, d.* FROM doc_links l JOIN documents d ON d.id=l.from_id "
                         "WHERE l.to_id=? AND d.published=1 ORDER BY d.doc_date", (doc_id,)):
@@ -786,27 +941,78 @@ def document(doc_id):
     return render_template("document.html", doc=doc, detail_rows=detail_rows, parent=parent,
                            children=children, attachments=attachments, comments=comments,
                            display_name=display_name, blocks=blocks, links=links,
-                           body_fallback=bool(body) and not doc[f"body_{lang}"],
+                           body_fallback=bool(body) and not src[f"body_{lang}"], body_html=body_html, toc=toc,
+                           version=version, versions=versions_of(doc), on_date=request.args.get("on", ""),
+                           prev_html=render_prev(doc), keywords=split_keywords(L(doc, "keywords")),
                            consult=consult_info(doc), can_edit=can_edit(doc),
                            votes_for=votes.get(1, 0), votes_against=votes.get(-1, 0), my_vote=my_vote,
-                           following=following, article_options=article_options(doc, blocks),
+                           following=following, article_options=article_options(doc, toc),
                            selected_article=request.args.get("article", ""), stage=stage_info(doc))
+
+
+def export_source(doc_id):
+    """Published document plus the wording to export (?v=<id> for an earlier one)."""
+    doc = get_document(doc_id)
+    if not doc or not doc["published"]:
+        abort(404)
+    version = selected_version(doc)
+    src = version or doc
+    lang = current_lang()
+    return doc, src, src[f"body_{lang}"] or src["body_tj"] or ""
+
+
+def export_meta(doc):
+    return " ".join(x for x in (doc_type_label(doc["doc_type"]), f"№ {doc['number']}" if doc["number"] else "",
+                                fmt_date(doc["doc_date"])) if x)
+
+
+def export_name(doc, ext):
+    return f"{doc_type_label(doc['doc_type']) or 'doc'}_{doc['number'] or doc['id']}.{ext}".replace(" ", "_")
 
 
 @app.route("/doc/<int:doc_id>.txt")
 def document_text(doc_id):
-    doc = get_document(doc_id)
-    if not doc or not doc["published"]:
-        abort(404)
-    lang = current_lang()
-    parts = [L(doc, "title"), " ".join(x for x in (doc_type_label(doc["doc_type"]),
-                                                  f"№ {doc['number']}" if doc["number"] else "",
-                                                  fmt_date(doc["doc_date"])) if x), "",
-             doc[f"body_{lang}"] or doc["body_tj"] or L(doc, "summary"), "",
+    doc, src, body = export_source(doc_id)
+    text = legaltext.to_text(body) if src["body_format"] == "html" else body
+    parts = [L(doc, "title"), export_meta(doc), "", text or L(doc, "summary"), "",
              url_for("document", doc_id=doc_id, _external=True)]
-    name = f"{doc_type_label(doc['doc_type']) or 'doc'}_{doc['number'] or doc_id}.txt".replace(" ", "_")
     return Response("\n".join(parts), mimetype="text/plain; charset=utf-8",
-                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{_quote(name)}"})
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{_quote(export_name(doc, 'txt'))}"})
+
+
+@app.route("/doc/<int:doc_id>.docx")
+def document_docx(doc_id):
+    doc, src, body = export_source(doc_id)
+    blocks = legaltext.export_blocks(body, src["body_format"], body_blocks(body))
+    if not blocks and L(doc, "summary"):
+        blocks = [{"type": "p", "text": L(doc, "summary")}]
+    data = legaltext.build_docx(L(doc, "title"), export_meta(doc), blocks,
+                                url_for("document", doc_id=doc_id, _external=True))
+    return Response(data, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{_quote(export_name(doc, 'docx'))}"})
+
+
+@app.route("/doc/<int:doc_id>/compare")
+def compare_versions(doc_id):
+    """Earlier wording (?a=<version id>) against another one (?b=<version id>) or the current text."""
+    doc = get_document(doc_id)
+    if not doc or (not doc["published"] and not can_edit(doc)):
+        abort(404)
+    db = get_db()
+    lang = current_lang()
+
+    def side(raw):
+        if raw.isdigit():
+            v = db.execute("SELECT * FROM document_versions WHERE id=? AND document_id=?",
+                           (int(raw), doc_id)).fetchone()
+            if not v:
+                abort(404)
+            return v, legaltext.paragraphs(v[f"body_{lang}"] or v["body_tj"], v["body_format"])
+        return None, legaltext.paragraphs(doc[f"body_{lang}"] or doc["body_tj"], doc["body_format"])
+    va, pa = side(request.args.get("a", ""))
+    vb, pb = side(request.args.get("b", ""))
+    rows, counts = legaltext.compare(pa, pb)
+    return render_template("compare.html", doc=doc, va=va, vb=vb, rows=rows, counts=counts)
 
 
 def _quote(s):
@@ -1330,9 +1536,20 @@ def save_uploads(doc_id):
 
 TEXT_COLS = ("topic", "doc_type", "number", "title_tj", "title_ru", "developer_tj", "developer_ru", "summary_tj",
              "summary_ru", "body_tj", "body_ru", "outcome_note_tj", "outcome_note_ru", "source_url",
-             "publication_tj", "publication_ru", "mj_reg_number")
+             "publication_tj", "publication_ru", "mj_reg_number", "classifier_tj", "classifier_ru", "keywords_tj",
+             "keywords_ru", "prev_body_tj", "prev_body_ru", "body_format")
 DATE_COLS = ("doc_date", "dev_deadline", "adopt_deadline", "consult_start", "consult_end", "outcome_date",
-             "effective_date", "mj_reg_date")
+             "effective_date", "mj_reg_date", "repeal_date", "revision_date", "registered_date")
+HTML_COLS = ("body_tj", "body_ru", "prev_body_tj", "prev_body_ru")
+
+
+def keep_version(doc, new_from, user_id=None):
+    """Store the current wording of doc as an earlier version that applied until new_from."""
+    get_db().execute(
+        "INSERT INTO document_versions (document_id, body_tj, body_ru, body_format, valid_from, valid_to, created_by) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (doc["id"], doc["body_tj"], doc["body_ru"], doc["body_format"],
+         doc["revision_date"] or doc["effective_date"] or doc["doc_date"], new_from, user_id))
 
 
 def save_links(doc_id, link_type, ids):
@@ -1369,6 +1586,13 @@ def edit_document(doc_id=None):
             vals["topic"] = None
         if vals["source_url"] and not re.match(r"^https?://", vals["source_url"]):
             vals["source_url"] = None
+        vals["body_format"] = "html" if vals["body_format"] == "html" else "text"
+        if vals["body_format"] == "html":
+            for c in HTML_COLS:
+                vals[c] = legaltext.sanitize(vals[c]) or None
+        if is_admin():
+            raw = (f.get("legacy_id") or "").strip()
+            vals["legacy_id"] = int(raw) if raw.isdigit() else None
         for c in DATE_COLS:
             vals[c] = f.get(c) if parse_date(f.get(c)) else None
         vals["affects_business"] = 1 if f.get("affects_business") else 0
@@ -1414,7 +1638,16 @@ def edit_document(doc_id=None):
                 vals["doc_date"] = vals["consult_start"]
             if not vals["developer_tj"] and g.user["org_name"]:
                 vals["developer_tj"] = g.user["org_name"]
+        if vals.get("legacy_id") and db.execute(
+                "SELECT 1 FROM documents WHERE kind=? AND legacy_id=? AND id<>?",
+                (kind, vals["legacy_id"], doc["id"] if doc else 0)).fetchone():
+            errors.append(t("err_legacy_taken"))
         if not errors:
+            if doc and kind == "act" and f.get("keep_version") and doc["body_tj"] and \
+                    (vals["body_tj"], vals["body_ru"]) != (doc["body_tj"], doc["body_ru"]):
+                if not vals["revision_date"] or vals["revision_date"] == doc["revision_date"]:
+                    vals["revision_date"] = today().isoformat()
+                keep_version(doc, vals["revision_date"], g.user["id"])
             if doc:
                 sets = ", ".join(f"{k}=?" for k in vals)
                 db.execute(f"UPDATE documents SET {sets}, updated_at=datetime('now') WHERE id=?",
@@ -1432,6 +1665,7 @@ def edit_document(doc_id=None):
                 save_links(new_id, "amends", parse_ids(f.get("amends")))
                 save_links(new_id, "repeals", parse_ids(f.get("repeals")))
             save_uploads(new_id)
+            fts_sync(db, [new_id])
             # notifications
             new = get_document(new_id)
             if new["published"] and (not doc or not doc["published"]):
@@ -1512,6 +1746,7 @@ def delete_document(doc_id):
         except OSError:
             pass
     db.execute("DELETE FROM documents WHERE id=?", (doc_id,))
+    fts_sync(db, [doc_id])
     audit("document.delete", f"doc:{doc_id} {doc['title_tj'][:80]}")
     db.commit()
     flash(t("deleted"), "success")
@@ -1799,7 +2034,7 @@ def import_rows(reader, owner_id):
         legal = row.get("legal_status") if row.get("legal_status") in LEGAL_STATUSES else \
             ("in_force" if kind == "act" else None)
         src = row.get("source_url") if re.match(r"^https?://", row.get("source_url") or "") else None
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO documents (kind, doc_type, number, doc_date, title_tj, title_ru, developer_tj, developer_ru, "
             "summary_tj, summary_ru, body_tj, body_ru, publication_tj, legal_status, source_url, owner_id, topic) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -1843,7 +2078,7 @@ def doc_json(d, full=False):
         "legal_status": d["legal_status"] if d["kind"] == "act" else None,
         "code": doc_code(d), "topic": d["topic"], "views": d["views"],
         "stage": dict(zip(("index", "state"), (stage_info(d)["idx"], stage_info(d)["state"]))),
-        "url": url_for("document", doc_id=d["id"], _external=True),
+        "url": url_for("document", doc_id=d["id"], _external=True), "legacy_id": d["legacy_id"],
     }
     if full:
         out.update({
@@ -1856,7 +2091,13 @@ def doc_json(d, full=False):
                         "note": {"tj": d["outcome_note_tj"], "ru": d["outcome_note_ru"]}},
             "effective_date": d["effective_date"],
             "publication": {"tj": d["publication_tj"], "ru": d["publication_ru"]},
-            "related_id": d["related_id"], "source_url": d["source_url"],
+            "related_id": d["related_id"], "source_url": d["source_url"], "text_format": d["body_format"],
+            "previous_text": {"tj": d["prev_body_tj"], "ru": d["prev_body_ru"]},
+            "reference": {"revision_date": d["revision_date"], "repeal_date": d["repeal_date"],
+                          "registered_date": d["registered_date"], "mj_number": d["mj_reg_number"],
+                          "mj_date": d["mj_reg_date"],
+                          "classifier": {"tj": d["classifier_tj"], "ru": d["classifier_ru"]},
+                          "keywords": {"tj": split_keywords(d["keywords_tj"]), "ru": split_keywords(d["keywords_ru"])}},
         })
     return out
 
@@ -1867,7 +2108,7 @@ def api_suggest():
     q = (request.args.get("q") or "").strip()[:100]
     if len(q) < 2:
         return jsonify(items=[])
-    rows, total = search_documents(q=q, per_page=6)
+    rows, total = search_documents(q=q, per_page=6, sort="relevance")
     lang = current_lang()
     return jsonify(total=total, items=[{
         "id": r["id"], "code": doc_code(r), "kind": r["kind"], "kind_label": tr("kind_" + r["kind"], lang),
@@ -1942,6 +2183,59 @@ def sitemap():
     return Response(f'<?xml version="1.0" encoding="utf-8"?><urlset '
                     f'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>',
                     mimetype="application/xml")
+
+
+# ---------------------------------------------------------------------------
+# Addresses of the previous portal (PHPMaker, 2018): permanent redirects so that
+# links in court decisions, articles and other sites keep working.
+# ---------------------------------------------------------------------------
+LEGACY_DOC_PAGES = {
+    # page -> (kind, query parameter with the old record number, anchor on the new page)
+    "view_qonunhoview.php": ("act", "asosi_id", ""),
+    "view_rnaqshaview.php": ("plan", "reestr_id", ""),
+    "v_peshnihodnaqshalist.php": ("plan", "fk_reestr_id", "#comments"),
+    "v_rn_qabullist.php": ("plan", "fk_reestr_id", "#lifecycle"),
+    "view_rloihaview.php": ("draft", "reestr_id", ""),
+    "v_peshnihodloihalist.php": ("draft", "fk_reestr_id", "#comments"),
+    "v_rl_qabullist.php": ("draft", "fk_reestr_id", "#lifecycle"),
+}
+LEGACY_LIST_PAGES = {"view_rnaqshalist.php": "plans", "view_rloihalist.php": "drafts"}
+
+
+def legacy_doc_id(kind, legacy_id):
+    row = get_db().execute("SELECT id FROM documents WHERE kind=? AND legacy_id=? AND published=1",
+                           (kind, legacy_id)).fetchone()
+    return row["id"] if row else None
+
+
+@app.route("/publicria/")
+def legacy_ria_root():
+    return legacy_redirect("")
+
+
+@app.route("/publicadliya/")
+def legacy_adliya_root():
+    return legacy_redirect("")
+
+
+@app.route("/publicria/<path:page>")
+@app.route("/publicadliya/<path:page>")
+def legacy_redirect(page):
+    lang = request.args.get("language")
+    extra = {"lang": lang} if lang in LANGS else {}
+    page = page.rsplit("/", 1)[-1]
+    if page in LEGACY_DOC_PAGES:
+        kind, param, anchor = LEGACY_DOC_PAGES[page]
+        raw = request.args.get(param, "")
+        target = legacy_doc_id(kind, int(raw)) if raw.isdigit() else None
+        if not target:
+            abort(404)
+        return redirect(url_for("document", doc_id=target, **extra) + anchor, 301)
+    if request.path.startswith("/publicadliya"):  # dashboard and the four search forms of the acts register
+        return redirect(url_for("registry", slug="acts", **extra), 301)
+    if page in LEGACY_LIST_PAGES:
+        return redirect(url_for("registry", slug=LEGACY_LIST_PAGES[page], **extra), 301)
+    return redirect(url_for("index", **extra), 301)
 
 
 @app.route("/robots.txt")

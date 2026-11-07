@@ -901,3 +901,66 @@ html.contrast .toast { background: #fff !important; box-shadow: 0 0 0 2px #000; 
   .mobile-cta { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding: 14px 16px;
     background: var(--surface); border-radius: 20px; box-shadow: var(--shadow-1); }
 }
+
+/* phones: filters folded behind one button (set up in app.js; without JS everything shows) */
+.filter-toggle { display: none; }
+@media (max-width: 759px) {
+  .filters.is-foldable .filter-toggle { display: inline-flex; grid-column: 1 / -1; justify-content: center; }
+  .filters.is-foldable:not(.is-open) > .field-inline,
+  .filters.is-foldable:not(.is-open) > .filter-full { display: none; }
+}
+
+/* acts stored as HTML (Ministry of Justice database): chapters, articles, notes, tables */
+.legal-html p { white-space: normal; margin: 0 0 0.75em; }
+.legal-html h1, .legal-html h2 { font: 700 1.1875rem/1.35 var(--font-display); text-align: center; margin: 1.2em 0 0.4em; }
+.legal-html h3, .legal-html h4 { font: 700 1.0625rem/1.4 var(--font-display); text-align: center; margin: 2em 0 0.6em; }
+.legal-html h5, .legal-html h6 { font: 700 1rem/1.45 var(--font-display); margin: 1.6em 0 0.4em; color: var(--ink); }
+.legal-html .article-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; scroll-margin-top: 90px; }
+.legal-html h1.article-h, .legal-html h2.article-h, .legal-html h3.article-h, .legal-html h4.article-h { justify-content: center; }
+.legal-html [id] { scroll-margin-top: 90px; }
+.legal-html :target, .legal-html a[id]:target + * { background: color-mix(in srgb, var(--primary) 14%, transparent); border-radius: 6px; }
+.legal-html .lt-dname, .legal-html .lt-center, .legal-html .lt-title { text-align: center; font-weight: 700; max-width: none; }
+.legal-html .lt-right { text-align: right; margin-left: auto; max-width: 34ch; }
+.legal-html .lt-right p { max-width: none; margin: 0; }
+.legal-html .lt-block { margin: 0.8em 0 0.8em auto; }
+.legal-html .lt-left { text-align: left; }
+.legal-html .lt-inline-comment, .legal-html .lt-doc-info-change, .legal-html .lt-comments { color: var(--muted); font-size: 0.9em; font-family: var(--font); }
+.legal-html .lt-doc-info-change { text-align: center; }
+.legal-html a { color: var(--primary); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.legal-html table { border-collapse: collapse; width: 100%; margin: 1em 0; font-family: var(--font); font-size: 0.9375rem; line-height: 1.5; display: block; overflow-x: auto; }
+.legal-html td, .legal-html th { border: 1px solid var(--line); padding: 6px 8px; vertical-align: top; }
+.legal-html th { background: var(--fill-2); }
+.legal-html ul, .legal-html ol { max-width: 66ch; }
+
+/* table of contents: chapters and articles */
+.toc-sub { max-height: 60vh; overflow-y: auto; }
+.toc-sub .toc-l1 { padding-left: 10px; }
+.toc-sub .toc-l2 { padding-left: 20px; }
+
+/* earlier wordings and comparison */
+.version-banner { margin-bottom: 1.2em; font-family: var(--font); font-size: 1rem; }
+.version-banner p { margin: 4px 0 0; }
+.version-date { align-items: end; gap: 8px; margin-bottom: 12px; }
+.versions-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.versions-list li.is-current > a { font-weight: 600; }
+.diff p { white-space: normal; margin: 0 0 0.6em; padding: 2px 8px; border-radius: 6px; }
+.diff .diff-equal { color: var(--muted); }
+.diff .diff-insert, .diff .diff-delete, .diff .diff-change { background: var(--fill-2); }
+ins { background: color-mix(in srgb, #34c759 26%, transparent); text-decoration: none; border-radius: 3px; padding: 0 2px; }
+del { background: color-mix(in srgb, #ff3b30 20%, transparent); border-radius: 3px; padding: 0 2px; }
+html.contrast ins { background: none; text-decoration: underline 2px; }
+html.contrast del { background: none; }
+
+/* previous wording of a draft, folded by default */
+#prev-text summary { cursor: pointer; list-style: none; }
+#prev-text summary::-webkit-details-marker { display: none; }
+#prev-text .summary-h { display: inline; }
+#prev-text summary::after { content: " ▾"; color: var(--muted); }
+#prev-text details[open] summary::after { content: " ▴"; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips .pill { text-decoration: none; color: var(--ink-2); }
+
+/* search: the passage that matched */
+.doc-card-snip { margin: 0; font-size: 0.9375rem; color: var(--ink-2); line-height: 1.5; }
+mark { background: color-mix(in srgb, #ffcc00 45%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+html.contrast mark { background: #ff0; }

@@ -55,7 +55,9 @@
       {% if doc.doc_date %}<time datetime="{{ doc.doc_date }}">{{ fmt_date(doc.doc_date) }}</time>{% endif %}
     </p>
     {% if L(doc, 'developer') %}<p class="doc-card-dev">{{ L(doc, 'developer') }}</p>{% endif %}
-    {% if L(doc, 'summary') %}<p class="doc-card-summary">{{ L(doc, 'summary')|truncate(200) }}</p>{% endif %}
+    {% if doc.snip and '\x02' in doc.snip and (doc.snip|snippet_plain) not in L(doc, 'title') %}
+      <p class="doc-card-snip">{{ doc.snip|snippet }}</p>
+    {% elif L(doc, 'summary') %}<p class="doc-card-summary">{{ L(doc, 'summary')|truncate(200) }}</p>{% endif %}
     <div class="doc-card-foot">
       {{ countdown(doc) }}
       <span class="doc-card-tags">

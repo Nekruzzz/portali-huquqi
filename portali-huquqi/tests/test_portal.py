@@ -471,6 +471,139 @@ def test_qa_regressions():
     assert "Strict-Transport-Security" in c.get("/", headers={"X-Forwarded-Proto": "https"}).headers
 
 
+def test_legacy_redirects():
+    c = APP.test_client()
+    law = doc_id("Дар бораи санадҳои меъёрии ҳуқуқӣ»")
+    r = c.get("/publicadliya/view_qonunhoview.php?showdetail=&asosi_id=19892&language=ru")
+    assert r.status_code == 301 and r.headers["Location"].endswith(f"/doc/{law}?lang=ru")
+    assert c.get("/publicadliya/view_qonunhoview.php?asosi_id=1").status_code == 404
+    assert c.get("/publicadliya/view_qonunhoview.php?asosi_id=abc").status_code == 404
+    assert c.get("/publicadliya/dashboard.php?language=tj").headers["Location"].endswith("/acts?lang=tj")
+    assert c.get("/publicadliya/view_detailssrch.php").headers["Location"].endswith("/acts")
+    assert c.get("/publicria/view_rnaqshalist.php").headers["Location"].endswith("/plans")
+    assert c.get("/publicria/view_rloihalist.php").headers["Location"].endswith("/drafts")
+    assert c.get("/publicria/ibtido.php").headers["Location"].endswith("/")
+    assert c.get("/publicria/").status_code == 301
+    # plans and drafts by their old register numbers
+    import sqlite3
+    plan, draft = doc_id("соддагардонии иҷозатномадиҳӣ"), doc_id("Лоиҳаи Қонун «Дар бораи дастрасӣ")
+    conn = sqlite3.connect(portal.DB_PATH)
+    conn.execute("UPDATE documents SET legacy_id=118 WHERE id=?", (plan,))
+    conn.execute("UPDATE documents SET legacy_id=89 WHERE id=?", (draft,))
+    conn.commit()
+    conn.close()
+    assert c.get("/publicria/view_rnaqshaview.php?showdetail=&reestr_id=118").headers["Location"].endswith(f"/doc/{plan}")
+    assert c.get("/publicria/view_rloihaview.php?reestr_id=89").headers["Location"].endswith(f"/doc/{draft}")
+    assert c.get("/publicria/v_peshnihodloihalist.php?showmaster=view_rloiha&fk_reestr_id=89"
+                 ).headers["Location"].endswith(f"/doc/{draft}#comments")
+    assert c.get("/publicria/view_rloihaview.php?reestr_id=118").status_code == 404  # 118 is a plan, not a draft
+
+
+OLD_ACT_HTML = """<H2><A class=anchor-ogl name=A000000001></A>ҚОНУНИ ҶУМҲУРИИ ТОҶИКИСТОН</H2>
+<P class=dname>ДАР БОРАИ САНҶИШ</P>
+<DIV class=doc-info-change><P>(Қонуни ҶТ аз 23.05.2021 № <A class="outer" href="view_qonunhoview.php?showdetail=&asosi_id=19892#A000000004">1826</A>)</P></DIV>
+<H4><A class=anchor-ogl name=A000000003></A>БОБИ 1. МУҚАРРАРОТИ УМУМӢ</H4>
+<H6><A class=anchor-ogl name=A000000004></A>Моддаи 1. Мафҳумҳои асосӣ</H6>
+<P>Дар Қонуни мазкур мафҳумҳои заминҷунбӣ истифода мешаванд.</P>
+<TABLE><TR><TD colspan=2>Ҷадвал</TD></TR></TABLE>
+<script>alert(1)</script><P onclick="x()" style="color:red">Матн</P><A href="javascript:alert(2)">bad</A>"""
+
+
+def admin_client():
+    a = APP.test_client()
+    login(a, "admin@test.tj", "admin-password-1")
+    return a
+
+
+def test_html_act_text_versions_and_export():
+    a = admin_client()
+    law = doc_id("Дар бораи санадҳои меъёрии ҳуқуқӣ»")
+    base = {"csrf_token": csrf(a, "/manage/documents/new"), "kind": "act", "doc_type": "law", "published": "1",
+            "doc_date": "2017-05-30", "number": "1416", "title_tj": "Қонуни ҶТ «Дар бораи санҷиш»",
+            "body_format": "html", "body_tj": OLD_ACT_HTML, "legacy_id": "19898", "revision_date": "2021-05-23",
+            "repeal_date": "", "classifier_tj": "Ҳуқуқи маъмурӣ", "keywords_tj": "заминҷунбӣ, бехатарӣ"}
+    r = a.post("/manage/documents/new", data=base)
+    new_id = int(re.search(r"/documents/(\d+)/edit", r.headers["Location"]).group(1))
+    c = APP.test_client()
+    page = c.get(f"/doc/{new_id}").get_data(as_text=True)
+    # sanitised, structured, old anchors kept, links to other old acts resolved to their new pages
+    assert "<script" not in page.split("legal-html")[1].split("</section>")[0]
+    assert "onclick" not in page and "javascript:alert" not in page and "color:red" not in page
+    assert 'id="A000000004"' in page and 'href="#A000000004"' in page  # anchor + table of contents
+    assert f'href="/doc/{law}#A000000004"' in page
+    assert 'class="lt-dname"' in page and 'colspan="2"' in page
+    assert "Ҳуқуқи маъмурӣ" in page and "23.05.2021" in page and "заминҷунбӣ</a>" in page
+    assert "Таҳрирҳо" not in page  # no earlier wordings yet
+    # old address of this act now finds it
+    assert c.get("/publicadliya/view_qonunhoview.php?asosi_id=19898").headers["Location"].endswith(f"/doc/{new_id}")
+    # the same old number cannot go to a second act
+    r = a.post("/manage/documents/new", data={**base, "title_tj": "Дубора"})
+    assert r.status_code == 400
+    # change the text: the previous wording is kept and can be shown, dated and compared
+    edit = {**base, "csrf_token": csrf(a, f"/manage/documents/{new_id}/edit"), "keep_version": "1",
+            "revision_date": "2023-01-10",
+            "body_tj": OLD_ACT_HTML.replace("мафҳумҳои заминҷунбӣ", "мафҳумҳои нави заминҷунбӣ")}
+    a.post(f"/manage/documents/{new_id}/edit", data=edit)
+    page = c.get(f"/doc/{new_id}").get_data(as_text=True)
+    assert "Таҳрирҳо" in page and "23.05.2021 — 10.01.2023" in page
+    vid = int(re.search(r"\?v=(\d+)#text", page).group(1))
+    old = c.get(f"/doc/{new_id}?v={vid}").get_data(as_text=True)
+    assert "Шумо таҳрири пешинаро мебинед" in old and "мафҳумҳои нави" not in old
+    on_date = c.get(f"/doc/{new_id}?on=2022-02-01").get_data(as_text=True)
+    assert "Шумо таҳрири пешинаро мебинед" in on_date
+    assert "мафҳумҳои нави" in c.get(f"/doc/{new_id}?on=2024-01-01").get_data(as_text=True)
+    diff = c.get(f"/doc/{new_id}/compare?a={vid}").get_data(as_text=True)
+    assert "<ins>нави</ins>" in diff
+    assert c.get(f"/doc/{new_id}/compare?a=99999").status_code == 404
+    # downloads
+    txt = c.get(f"/doc/{new_id}.txt").get_data(as_text=True)
+    assert "Моддаи 1. Мафҳумҳои асосӣ" in txt and "<" not in txt.split("\n", 3)[3].split("http")[0]
+    r = c.get(f"/doc/{new_id}.docx")
+    assert r.status_code == 200 and r.data[:2] == b"PK"
+    import io
+    import docx
+    words = "\n".join(p.text for p in docx.Document(io.BytesIO(r.data)).paragraphs)
+    assert "Моддаи 1. Мафҳумҳои асосӣ" in words and "мафҳумҳои нави" in words
+    assert "мафҳумҳои нави" not in "\n".join(
+        p.text for p in docx.Document(io.BytesIO(c.get(f"/doc/{new_id}.docx?v={vid}").data)).paragraphs)
+    api = c.get(f"/api/documents/{new_id}").get_json()
+    assert api["legacy_id"] == 19898 and api["reference"]["keywords"]["tj"] == ["заминҷунбӣ", "бехатарӣ"]
+
+
+def test_full_text_search():
+    c = APP.test_client()
+    # word inside the text of an act, found only with the full-text option, with the passage marked
+    html = c.get("/acts?q=маблағгузорӣ&fulltext=1").get_data(as_text=True)
+    assert "1414" in html and "<mark>" in html
+    # prefix match: "санад" finds "санадҳои"; "ӣ" may be typed as "и"
+    assert "1414" in c.get("/acts?q=санад меъёри").get_data(as_text=True)
+    r = c.get("/api/documents?q=портали+интернетии").get_json()
+    assert r["total"] >= 1
+    # punctuation alone does not break the search
+    assert c.get("/search?q=%22%28%2A").status_code == 200
+    assert c.get("/search?q=-").status_code == 200
+    # suggestions use the same index
+    assert c.get("/api/suggest?q=Тартиби").get_json()["total"] >= 1
+
+
+def test_draft_previous_text_and_phone_filters():
+    a = admin_client()
+    draft = doc_id("Лоиҳаи Қонун «Дар бораи дастрасӣ")
+    page = a.get(f"/manage/documents/{draft}/edit").get_data(as_text=True)
+    assert 'name="prev_body_tj"' in page and 'name="body_format"' in page
+    import sqlite3
+    conn = sqlite3.connect(portal.DB_PATH)
+    conn.execute("UPDATE documents SET prev_body_tj=? WHERE id=?", ("Моддаи 1. Матни пештара\n\nСархат.", draft))
+    conn.commit()
+    conn.close()
+    html = APP.test_client().get(f"/doc/{draft}").get_data(as_text=True)
+    assert 'id="prev-text"' in html and "Матни пештара" in html
+    assert 'data-filters-label="Филтрҳо"' in APP.test_client().get("/acts").get_data(as_text=True)
+    # acts that never went through consultation here show no four-step tracker; their code uses the adoption year
+    law = APP.test_client().get(f"/doc/{doc_id('Дар бораи санадҳои меъёрии ҳуқуқӣ»')}").get_data(as_text=True)
+    assert 'class="stages' not in law and "03/17-" in law
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in list(globals().items()):

@@ -3,7 +3,7 @@
 {% from '_icons.html' import glyph, topic_chip, stage_tracker with context %}
 {% block title %}{{ L(doc, 'title')|truncate(80) }}{% endblock %}
 {% block content %}
-{% set headings = blocks|selectattr('type', 'equalto', 'h')|list %}
+{% set has_text = blocks or body_html %}
 {% set visible_comments = comments|selectattr('status', 'equalto', 'visible')|list %}
 {% set has_links = links.amended_by or links.amends or links.repealed_by or links.repeals %}
 <div class="page-head doc-head kind-{{ doc.kind }}">
@@ -28,7 +28,8 @@
       {% if doc.kind != 'act' %}<span class="fact">{{ glyph('chat', 15, 2) }} {{ visible_comments|length }}</span>{% endif %}
       {{ topic_chip(doc.topic) }}
     </div>
-    {{ stage_tracker(doc) }}
+    {# an act imported from the register never went through notice and discussion here #}
+    {% if doc.kind != 'act' or doc.related_id %}{{ stage_tracker(doc) }}{% endif %}
   </div>
 </div>
 
@@ -43,6 +44,10 @@
           {% if doc.effective_date %}<div><dt>{{ t('effective_date') }}</dt><dd>{{ fmt_date(doc.effective_date) }}</dd></div>{% endif %}
           {% if L(doc, 'publication') %}<div><dt>{{ t('publication_source') }}</dt><dd>{{ L(doc, 'publication') }}</dd></div>{% endif %}
           {% if doc.mj_reg_number %}<div><dt>{{ t('mj_registration') }}</dt><dd>№ {{ doc.mj_reg_number }}{% if doc.mj_reg_date %}, {{ fmt_date(doc.mj_reg_date) }}{% endif %}</dd></div>{% endif %}
+          {% if doc.revision_date %}<div><dt>{{ t('revision_date') }}</dt><dd>{{ fmt_date(doc.revision_date) }}</dd></div>{% endif %}
+          {% if doc.repeal_date %}<div><dt>{{ t('repeal_date') }}</dt><dd>{{ fmt_date(doc.repeal_date) }}</dd></div>{% endif %}
+          {% if L(doc, 'classifier') %}<div><dt>{{ t('classifier') }}</dt><dd>{{ L(doc, 'classifier') }}</dd></div>{% endif %}
+          {% if doc.registered_date %}<div><dt>{{ t('registered_date') }}</dt><dd>{{ fmt_date(doc.registered_date) }}</dd></div>{% endif %}
         {% endif %}
         {% if doc.dev_deadline %}<div><dt>{{ t('dev_deadline') }}</dt><dd>{{ fmt_date(doc.dev_deadline) }}</dd></div>{% endif %}
         {% if doc.adopt_deadline %}<div><dt>{{ t('adopt_deadline') }}</dt><dd>{{ fmt_date(doc.adopt_deadline) }}</dd></div>{% endif %}
@@ -65,7 +70,8 @@
       <div class="side-actions">
         <button class="btn btn-ghost js-print" type="button">{{ t('print') }}</button>
         <button class="btn btn-ghost js-copy" type="button" data-done="{{ t('share') }}">{{ t('copy_link') }}</button>
-        {% if blocks %}<a class="btn btn-ghost" href="{{ url_for('document_text', doc_id=doc.id) }}">{{ t('download_text') }}</a>{% endif %}
+        {% if has_text %}<a class="btn btn-ghost" href="{{ url_for('document_text', doc_id=doc.id) }}">{{ t('download_text') }}</a>
+        <a class="btn btn-ghost" href="{{ url_for('document_docx', doc_id=doc.id, v=version.id if version else None) }}">{{ t('download_docx') }}</a>{% endif %}
         {% if can_edit %}<a class="btn btn-ghost" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ t('edit') }}</a>{% endif %}
       </div>
     </div>
@@ -99,9 +105,11 @@
       <ul class="plain">
         {% if L(doc, 'summary') %}<li><a href="#summary">{{ t('summary') }}</a></li>{% endif %}
         {% if detail_rows %}<li><a href="#details">{{ t('ria') if doc.kind == 'draft' else t('notification') }}</a></li>{% endif %}
-        {% if blocks %}<li><a href="#text">{{ t('full_text') }}</a>
-          {% if headings %}<ul class="plain toc-sub">{% for h in headings[:30] %}<li><a href="#{{ h.id }}">{{ h.text|truncate(48) }}</a></li>{% endfor %}</ul>{% endif %}
+        {% if prev_html %}<li><a href="#prev-text">{{ t('prev_text') }}</a></li>{% endif %}
+        {% if has_text %}<li><a href="#text">{{ t('full_text') }}</a>
+          {% if toc %}{% set top = toc|map(attribute='level')|min %}<ul class="plain toc-sub">{% for h in toc[:80] %}<li class="toc-l{{ [h.level - top, 2]|min }}"><a href="#{{ h.id }}">{{ h.text|truncate(56) }}</a></li>{% endfor %}</ul>{% endif %}
         </li>{% endif %}
+        {% if versions %}<li><a href="#versions">{{ t('versions') }} ({{ versions|length + 1 }})</a></li>{% endif %}
         {% if has_links %}<li><a href="#amendments">{{ t('amendments') }}</a></li>{% endif %}
         {% if attachments or doc.source_url %}<li><a href="#files">{{ t('attachments') }}</a></li>{% endif %}
         {% if parent or children %}<li><a href="#lifecycle">{{ t('lifecycle') }}</a></li>{% endif %}
@@ -171,15 +179,63 @@
     </section>
     {% endif %}
 
-    {% if blocks %}
+    {% if prev_html %}
+    <section id="prev-text" class="doc-section">
+      <details>
+        <summary><h2 class="summary-h">{{ t('prev_text') }}</h2></summary>
+        <p class="note">{{ t('prev_text_hint') }}</p>
+        <div class="legal-text legal-html">{{ prev_html|safe }}</div>
+      </details>
+    </section>
+    {% endif %}
+
+    {% if has_text %}
     <section id="text" class="doc-section legal-text">
       <h2>{{ t('full_text') }}</h2>
+      {% if version %}
+      <div class="status-banner tone-warn version-banner">
+        <span class="squircle squircle-md squircle-orange" aria-hidden="true">{{ glyph('clock', 20, 2.1) }}</span>
+        <div><strong>{{ t('version_banner') }}</strong>
+          <p>{{ t('version_period').format(start=fmt_date(version.valid_from) or '…', end=fmt_date(version.valid_to) or '…') }}{% if version.note %} · {{ version.note }}{% endif %}</p>
+          <p><a href="{{ url_for('document', doc_id=doc.id) }}#text">{{ t('to_current') }}</a> ·
+             <a href="{{ url_for('compare_versions', doc_id=doc.id, a=version.id) }}">{{ t('compare_current') }}</a></p></div>
+      </div>
+      {% elif on_date %}<p class="note">{{ t('no_version_on_date') }}</p>{% endif %}
       {% if body_fallback %}<p class="note">{{ t('text_missing_lang') }}</p>{% endif %}
+      {% if body_html %}<div class="legal-html">{{ body_html|safe }}</div>{% endif %}
       {% for b in blocks %}
         {% if b.type == 'h' %}<h3 id="{{ b.id }}" class="article-h"><span>{{ b.text }}</span>
           {% if doc.status == 'consultation' %}<a class="propose-here" href="?article={{ b.text[:120]|urlencode }}#comment-form" aria-label="{{ t('propose_here') }}: {{ b.text }}">{{ glyph('chat', 14, 2.2) }} {{ t('propose') }}</a>{% endif %}</h3>
         {% else %}<p>{{ b.text }}</p>{% endif %}
       {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if versions %}
+    <section id="versions" class="doc-section">
+      <h2>{{ t('versions') }}</h2>
+      <form method="get" action="{{ url_for('document', doc_id=doc.id) }}#text" class="row version-date">
+        <label class="field-inline"><span>{{ t('text_on_date') }}</span><input type="date" name="on" value="{{ on_date }}" required></label>
+        <button class="btn btn-ghost" type="submit">{{ t('show_btn') }}</button>
+      </form>
+      <ol class="act-list versions-list">
+        <li class="{{ 'is-current' if not version }}"><a href="{{ url_for('document', doc_id=doc.id) }}#text">
+          <span class="act-meta">{% if doc.revision_date %}{{ fmt_date(doc.revision_date) }} — {% endif %}<span class="badge badge-legal-in_force">{{ t('current_version') }}</span></span></a></li>
+        {% for v in versions %}
+        <li class="{{ 'is-current' if version and version.id == v.id }}">
+          <a href="{{ url_for('document', doc_id=doc.id, v=v.id) }}#text"><span class="act-meta">{{ fmt_date(v.valid_from) or '…' }} — {{ fmt_date(v.valid_to) or '…' }}</span>
+            <span class="act-title">{{ t('earlier_version') }}{% if v.note %}: {{ v.note }}{% endif %}</span></a>
+          <a class="btn btn-link btn-sm" href="{{ url_for('compare_versions', doc_id=doc.id, a=v.id) }}">{{ t('compare_current') }}</a>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endif %}
+
+    {% if keywords %}
+    <section class="doc-section keywords">
+      <h2>{{ t('keywords') }}</h2>
+      <p class="chips">{% for k in keywords %}<a class="pill" href="{{ url_for('registry', slug='acts', q=k) }}">{{ k }}</a>{% endfor %}</p>
     </section>
     {% endif %}
 

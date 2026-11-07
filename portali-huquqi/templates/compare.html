@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('compare_title') }} · {{ L(doc, 'title')|truncate(60) }}{% endblock %}
+{% macro label(v) -%}
+  {%- if v %}{{ t('earlier_version') }} ({{ fmt_date(v.valid_from) or '…' }} — {{ fmt_date(v.valid_to) or '…' }}){% else %}{{ t('current_version') }}{% if doc.revision_date %} ({{ fmt_date(doc.revision_date) }}){% endif %}{% endif -%}
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="breadcrumbs">
+      <a href="{{ url_for('index') }}">{{ t('nav_home') }}</a> /
+      <a href="{{ url_for('document', doc_id=doc.id) }}">{{ L(doc, 'title')|truncate(80) }}</a>
+    </nav>
+    <h1>{{ t('compare_title') }}</h1>
+    <p class="lead"><del>{{ label(va) }}</del> → <ins>{{ label(vb) }}</ins></p>
+  </div>
+</div>
+<div class="wrap section">
+  <section class="doc-section">
+    <p class="diff-legend small"><ins>{{ t('diff_added') }}</ins> <del>{{ t('diff_removed') }}</del></p>
+    {% if counts.insert or counts.delete or counts.change %}
+      <p class="note">{{ t('diff_summary').format(**counts) }}</p>
+      <div class="diff legal-text">
+        {% for r in rows %}<p class="diff-{{ r.op }}">{{ r.html|safe }}</p>{% endfor %}
+      </div>
+    {% else %}
+      <p class="empty">{{ t('diff_none') }}</p>
+    {% endif %}
+    <p><a class="btn btn-ghost" href="{{ url_for('document', doc_id=doc.id) }}#versions">← {{ t('versions') }}</a></p>
+  </section>
+</div>
+{% endblock %}

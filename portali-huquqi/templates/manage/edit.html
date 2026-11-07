@@ -85,6 +85,13 @@
         {{ tf('mj_reg_date', t('field_mj_date'), 'date') }}
         {{ tf('amends', t('field_amends')) }}
         {{ tf('repeals', t('field_repeals')) }}
+        {{ tf('revision_date', t('revision_date'), 'date') }}
+        {{ tf('repeal_date', t('repeal_date'), 'date') }}
+        {{ tf('registered_date', t('registered_date'), 'date') }}
+        {{ tf('classifier_tj', t('field_classifier_tj')) }}
+        {{ tf('classifier_ru', t('field_classifier_ru')) }}
+        {{ tf('keywords_tj', t('field_keywords_tj')) }}
+        {{ tf('keywords_ru', t('field_keywords_ru')) }}
       </div>
     </fieldset>
 
@@ -119,8 +126,21 @@
 
     <fieldset>
       <legend>{{ t('section_texts') }}</legend>
+      <div class="grid-2">
+        <label><span>{{ t('field_body_format') }}</span>
+          <select name="body_format">
+            {% for fm in ('text', 'html') %}<option value="{{ fm }}"{% if (form.get('body_format') or 'text') == fm %} selected{% endif %}>{{ t('fmt_' ~ fm) }}</option>{% endfor %}
+          </select>
+        </label>
+        {% if g.user.role == 'admin' %}{{ tf('legacy_id', t('field_legacy_id'), 'number') }}{% endif %}
+      </div>
       {{ ta('body_tj', t('field_body_tj'), 12) }}
       {{ ta('body_ru', t('field_body_ru'), 12) }}
+      {% if doc %}<label class="check only-act"><input type="checkbox" name="keep_version" value="1" checked> <span>{{ t('field_keep_version') }}</span></label>{% endif %}
+      <div class="only-draft">
+        {{ ta('prev_body_tj', t('field_prev_tj'), 6) }}
+        {{ ta('prev_body_ru', t('field_prev_ru'), 6) }}
+      </div>
       <label><span>{{ t('field_files') }}</span><input type="file" name="files" multiple accept=".pdf,.doc,.docx,.odt,.rtf"></label>
       {% if attachments %}
       <ul class="plain file-admin">
