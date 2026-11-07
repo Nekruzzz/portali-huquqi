@@ -41,6 +41,16 @@ A rebuild of the Internet portal of legal information of the Republic of Tajikis
 - **CSV import** of existing acts (admin page or `flask --app app import-csv file.csv`).
 - **Accessibility**: larger text (A+/A−), high-contrast mode, works without JavaScript, keyboard friendly.
 - **Open data**: JSON API, Atom feed, sitemap. Audit log of all admin actions.
+- **Full-text search** (SQLite FTS5) over titles, numbers, summaries, keywords and full texts, ranked by relevance,
+  with the matching passage highlighted. Tajik letters typed on a Russian keyboard still match
+  (ч/ҷ, х/ҳ, к/қ, г/ғ, и/ӣ, у/ӯ).
+- **Acts as structured HTML** (as in the Ministry of Justice database): chapters and articles in the contents,
+  original anchors kept (`#A000000064`), links between acts open the right article. HTML is sanitised (nh3).
+- **Earlier wordings** of acts: kept when the text changes, shown by wording or by date (`?on=2022-01-01`),
+  compared word by word with the current text.
+- **Reference card** of acts: Ministry of Justice registration, dates of adoption, entry into force, current
+  wording and repeal, branch of legislation, keywords. Drafts show the previous wording they change.
+- **Downloads**: Word (.docx), plain text, print layout.
 
 ### Ideas adopted from comparable portals
 
@@ -137,6 +147,27 @@ Back up `instance/` (database, uploaded files, logo).
 4. Registered users comment on specific articles and vote; the developer answers each proposal.
 5. After the window closes, the authorised body writes the **conclusion**; the developer records the **outcome**; participants are e-mailed.
 6. The authorised body adds the adopted **act**, links it to the draft and to any acts it amends or repeals.
+
+## Migrating from the previous portal
+
+Addresses of the previous portal keep working: `/publicadliya/view_qonunhoview.php?asosi_id=N` opens the act,
+`/publicria/view_rnaqshaview.php?reestr_id=N` the plan, `/publicria/view_rloihaview.php?reestr_id=N` the draft,
+and the old list and search pages open the matching register (301 redirects, matched by `documents.legacy_id`).
+
+Records are loaded from a JSON-lines file, one record per line (format in `legacy_import.py`). Re-running
+updates records in place, so the final import on switch-over day only brings the changes:
+
+```bash
+flask --app app import-legacy old/records.jsonl          # files listed in records are copied into uploads
+```
+
+The file comes from a converter of the old database (preferred) or, with the operator's permission, from the
+public pages:
+
+```bash
+python tools/fetch_old_portal.py --plans all --drafts all --files old/files --out old/records.jsonl
+python tools/fetch_old_portal.py --acts all --out old/records.jsonl     # ≈26 000 acts, about 15 hours, resumable
+```
 
 ## CSV import format
 

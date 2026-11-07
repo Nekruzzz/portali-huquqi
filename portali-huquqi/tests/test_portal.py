@@ -579,6 +579,11 @@ def test_full_text_search():
     assert "1414" in c.get("/acts?q=санад меъёри").get_data(as_text=True)
     r = c.get("/api/documents?q=портали+интернетии").get_json()
     assert r["total"] >= 1
+    # typed on a Russian keyboard: ч for ҷ, х for ҳ, и for ӣ
+    assert "1414" in c.get("/acts?q=Чумхурии+Точикистон+меъёрии+хукуки").get_data(as_text=True)
+    # the passage keeps the original spelling
+    html = c.get("/acts?q=маблағгузори&fulltext=1").get_data(as_text=True)
+    assert "<mark>маблағгузорӣ</mark>" in html or "<mark>маблағгузори" in html
     # punctuation alone does not break the search
     assert c.get("/search?q=%22%28%2A").status_code == 200
     assert c.get("/search?q=-").status_code == 200
@@ -602,6 +607,64 @@ def test_draft_previous_text_and_phone_filters():
     # acts that never went through consultation here show no four-step tracker; their code uses the adoption year
     law = APP.test_client().get(f"/doc/{doc_id('Дар бораи санадҳои меъёрии ҳуқуқӣ»')}").get_data(as_text=True)
     assert 'class="stages' not in law and "03/17-" in law
+
+
+def test_legacy_import_from_jsonl():
+    import json
+    import sqlite3
+    import legacy_import
+    folder = tempfile.mkdtemp()
+    os.makedirs(os.path.join(folder, "files"))
+    with open(os.path.join(folder, "files", "ria.pdf"), "wb") as f:
+        f.write(b"%PDF-1.4 test")
+    recs = [
+        {"kind": "act", "legacy_id": 700001, "type": "Қонун", "number": "77", "date": "01/02/2020",
+         "title": {"tj": "Қонуни воридотии санҷишӣ", "ru": "Импортный закон"}, "status": "Действует",
+         "mj_number": "5", "mj_date": "03.02.2020", "adopted_by": {"tj": "Маҷлиси Олӣ"},
+         "publication": {"tj": "Маълумот нест", "ru": "Нет данных"},
+         "body": {"tj": "<H6><A name=A1></A>Моддаи 1. Ҳадаф</H6><P>Матни аввал фосфоритӣ.</P>"},
+         "versions": [{"valid_from": "2020-02-01", "valid_to": "2021-01-01", "body": {"tj": "<p>Таҳрири кӯҳна</p>"}}]},
+        {"kind": "act", "legacy_id": 700002, "number": "88", "date": "2021-01-01",
+         "title": {"tj": "Қонуни ҶТ оид ба ворид намудани тағйирот"}, "amends": [700001],
+         "body": {"tj": '<p>Ба <a href="view_qonunhoview.php?showdetail=&asosi_id=700001#A1">моддаи 1</a> тағйир.</p>'}},
+        {"kind": "plan", "legacy_id": 900, "title": {"tj": "Нақшаи воридотӣ"}, "developer": "Вазорати санҷиш",
+         "affected": "Ҳама", "problem": "Мушкилот", "published": "15.07.2025", "consult_end": "15.08.2025",
+         "accepted": "Ҳа", "contacts": "ш. Душанбе, 123"},
+        {"kind": "draft", "legacy_id": 901, "plan_legacy_id": 900, "title": {"tj": "Лоиҳаи воридотӣ"},
+         "consult_start": "16.07.2025", "consult_end": "15.08.2025", "accepted": "Дар барраси",
+         "prev_body": {"tj": "<p>Матни пештара</p>"}, "body": {"tj": "<p>Матни нав</p>"},
+         "files": [{"name": "ТТТ.pdf", "path": "files/ria.pdf"}]},
+        {"kind": "act", "title": {"tj": "без номера"}},
+    ]
+    path = os.path.join(folder, "records.jsonl")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(json.dumps(r, ensure_ascii=False) for r in recs) + "\nnot json\n")
+    counts = legacy_import.import_jsonl(portal.DB_PATH, path, portal.UPLOAD_DIR, log=lambda *_: None)
+    assert counts["inserted"] == 4 and counts["errors"] == 2 and counts["files"] == 1
+    assert counts["links"] == 1 and counts["versions"] == 1
+    again = legacy_import.import_jsonl(portal.DB_PATH, path, portal.UPLOAD_DIR, log=lambda *_: None)
+    assert again["inserted"] == 0 and again["updated"] == 4 and again["files"] == 0
+    conn = sqlite3.connect(portal.DB_PATH)
+    conn.row_factory = sqlite3.Row
+    portal.fts_sync(conn, again["ids"])
+    conn.commit()
+    act = conn.execute("SELECT * FROM documents WHERE kind='act' AND legacy_id=700001").fetchone()
+    assert act["doc_date"] == "2020-02-01" and act["mj_reg_date"] == "2020-02-03" and act["doc_type"] == "law"
+    assert act["publication_tj"] is None and act["legal_status"] == "in_force" and act["body_format"] == "html"
+    draft = conn.execute("SELECT * FROM documents WHERE kind='draft' AND legacy_id=901").fetchone()
+    plan = conn.execute("SELECT * FROM documents WHERE kind='plan' AND legacy_id=900").fetchone()
+    assert draft["related_id"] == plan["id"] and plan["outcome"] == "proceed" and draft["outcome"] is None
+    conn.close()
+    c = APP.test_client()
+    amending = c.get(c.get("/publicadliya/view_qonunhoview.php?asosi_id=700002").headers["Location"]).get_data(as_text=True)
+    assert f'href="/doc/{act["id"]}#A1"' in amending
+    page = c.get(f"/doc/{act['id']}").get_data(as_text=True)
+    assert "Қонуни ҶТ оид ба ворид намудани тағйирот" in page  # amended-by list
+    assert "Таҳрирҳо" in page
+    assert "фосфоритӣ" in c.get("/acts?q=фосфорити&fulltext=1").get_data(as_text=True)
+    plan_page = c.get(f"/doc/{plan['id']}").get_data(as_text=True)
+    assert "Тамоси таҳиякунанда" in plan_page and "ш. Душанбе, 123" in plan_page
+    assert "ТТТ.pdf" in c.get(f"/doc/{draft['id']}").get_data(as_text=True)
 
 
 if __name__ == "__main__":

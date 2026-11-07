@@ -127,6 +127,7 @@ def get_db():
         conn.execute("PRAGMA foreign_keys=ON")
         # SQLite's LIKE is case-insensitive for ASCII only; make Cyrillic work.
         conn.create_function("ulower", 1, lambda s: s.lower() if isinstance(s, str) else s)
+        conn.create_function("ufold", 1, lambda s: fold(s) if isinstance(s, str) else s)
         g.db = conn
     return g.db
 
@@ -168,6 +169,13 @@ def init_db():
         conn.executescript(f.read())
     try:
         conn.execute(FTS_DDL)
+        # re-index when the way text is indexed changes
+        have = conn.execute("SELECT value FROM settings WHERE key='fts_version'").fetchone()
+        if not have or have[0] != FTS_VERSION:
+            conn.row_factory = sqlite3.Row
+            fts_sync(conn)
+            conn.execute("INSERT INTO settings (key, value) VALUES ('fts_version', ?) "
+                         "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (FTS_VERSION,))
     except sqlite3.OperationalError as e:  # SQLite built without FTS5: search falls back to LIKE
         print(f"Full-text search unavailable: {e}")
     conn.commit()
@@ -178,6 +186,15 @@ def init_db():
 # Full-text search (SQLite FTS5). Bodies stored as HTML are indexed as plain text.
 # remove_diacritics folds ӣ/ӯ into и/у, so either spelling finds the word.
 # ---------------------------------------------------------------------------
+# Tajik letters typed on a Russian keyboard (and ё), folded the same way in the index and in queries
+FOLD = str.maketrans("ӣӯҷҳқғё", "иучхкге")
+
+
+def fold(value):
+    return (value or "").lower().translate(FOLD)
+
+
+FTS_VERSION = "2"  # 2: Tajik letters folded
 FTS_COLS = ("title_tj", "title_ru", "number", "summary_tj", "summary_ru", "developer_tj", "developer_ru",
             "keywords", "body_tj", "body_ru")
 FTS_DDL = ("CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5("
@@ -191,7 +208,7 @@ def fts_values(row):
         v = row[col] or ""
         return legaltext.to_text(v) if row["body_format"] == "html" and col.startswith("body_") else v
     keywords = " ".join(row[c] or "" for c in ("keywords_tj", "keywords_ru", "classifier_tj", "classifier_ru"))
-    return [text(c) if c != "keywords" else keywords for c in FTS_COLS]
+    return [fold(text(c) if c != "keywords" else keywords) for c in FTS_COLS]
 
 
 def fts_sync(conn, ids=None):
@@ -229,7 +246,7 @@ def fts_ready(db):
 
 
 def fts_query(q, fulltext):
-    words = re.findall(r"\w+", (q or "").lower())[:8]
+    words = re.findall(r"\w+", fold(q))[:8]
     if not words:
         return None
     match = " ".join(f'"{w}"*' for w in words)
@@ -596,11 +613,6 @@ def snippet_filter(value):
     return Markup(str(escape(value or "")).replace("\x02", "<mark>").replace("\x03", "</mark>"))
 
 
-@app.template_filter("snippet_plain")
-def snippet_plain(value):
-    return " ".join((value or "").replace("\x02", "").replace("\x03", "").replace("…", " ").split())
-
-
 def login_required(view):
     @wraps(view)
     def wrapped(*a, **kw):
@@ -681,16 +693,15 @@ def search_documents(kind=None, q="", doc_type="", year="", status="", sort="new
     if not match:
         for tok in (q or "").lower().split()[:8]:
             tok = tok.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            where.append(f"ulower({haystack}) LIKE ? ESCAPE '\\'")
-            params.append(f"%{tok}%")
+            where.append(f"ufold({haystack}) LIKE ? ESCAPE '\\'")
+            params.append(f"%{fold(tok)}%")
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     join, extra_cols = "", ""
     if match:
-        join = (f"JOIN (SELECT rowid, bm25(documents_fts, {FTS_WEIGHTS}) AS rank, "
-                "snippet(documents_fts, -1, char(2), char(3), '…', 18) AS snip "
+        join = (f"JOIN (SELECT rowid, bm25(documents_fts, {FTS_WEIGHTS}) AS rank "
                 "FROM documents_fts WHERE documents_fts MATCH ?) f ON f.rowid=d.id")
         params.insert(0, match)
-        extra_cols = ", f.rank AS rank, f.snip AS snip"
+        extra_cols = ", f.rank AS rank"
     elif sort == "relevance":
         sort = "new"
     order = {"old": "d.doc_date ASC, d.id ASC",
@@ -707,6 +718,38 @@ def search_documents(kind=None, q="", doc_type="", year="", status="", sort="new
         f"FROM documents d {join} {clause} ORDER BY {order} LIMIT ? OFFSET ?",
         params + [per_page, (page - 1) * per_page]).fetchall()
     return rows, total
+
+
+def snippets_for(rows, q, fulltext):
+    """Passage around the first match in the summary or the text, from the original spelling,
+    with the searched words marked (\\x02 ... \\x03). Titles are shown anyway, so they are skipped."""
+    words = [w for w in re.findall(r"\w+", fold(q))[:8] if len(w) > 1]
+    if not words:
+        return {}
+    pattern = re.compile(r"(?<!\w)(" + "|".join(re.escape(w) for w in words) + r")\w*")
+    lang, out = current_lang(), {}
+    for r in rows:
+        sources = [L(r, "summary")]
+        if fulltext:
+            body = r[f"body_{lang}"] or r["body_tj"] or ""
+            sources.append(legaltext.to_text(body) if r["body_format"] == "html" else body)
+        for text in sources:
+            text = " ".join((text or "").split())
+            folded = fold(text)
+            m = pattern.search(folded) if len(folded) == len(text) else None
+            if not m:
+                continue
+            start, end = max(m.start() - 90, 0), min(m.end() + 150, len(text))
+            start = text.rfind(" ", 0, start) + 1 if start else 0
+            piece, fpiece = text[start:end], folded[start:end]
+            marked, last = [], 0
+            for mm in pattern.finditer(fpiece):
+                marked += [piece[last:mm.start()], "\x02", piece[mm.start():mm.end()], "\x03"]
+                last = mm.end()
+            marked.append(piece[last:])
+            out[r["id"]] = ("… " if start else "") + "".join(marked) + (" …" if end < len(text) else "")
+            break
+    return out
 
 
 def search_args():
@@ -799,6 +842,7 @@ def topic_page(slug):
     kind = request.args.get("kind") if request.args.get("kind") in KINDS else None
     rows, total = search_documents(kind, page=page, **args)
     return render_template("search.html", rows=rows, total=total, page=page, kind=kind, topic_head=slug,
+                           snips=snippets_for(rows, args["q"], args["fulltext"]),
                            developers=developers_list(), pages=max((total + PER_PAGE - 1) // PER_PAGE, 1))
 
 
@@ -808,10 +852,11 @@ def registry(slug):
     page = page_arg()
     args = search_args()
     rows, total = search_documents(kind, page=page, **args)
+    snips = snippets_for(rows, args["q"], args["fulltext"])
     years = [r[0] for r in get_db().execute(
         "SELECT DISTINCT substr(doc_date,1,4) y FROM documents WHERE kind=? AND published=1 "
         "AND doc_date IS NOT NULL ORDER BY y DESC", (kind,))]
-    return render_template("registry.html", kind=kind, slug=slug, rows=rows, total=total, page=page,
+    return render_template("registry.html", kind=kind, slug=slug, rows=rows, total=total, page=page, snips=snips,
                            pages=max((total + PER_PAGE - 1) // PER_PAGE, 1), years=years,
                            developers=developers_list(kind), statuses=[] if kind == "act" else STATUSES,
                            subscribed=user_subscribed(kind, args["developer"]))
@@ -821,8 +866,10 @@ def registry(slug):
 def search():
     kind = request.args.get("kind") if request.args.get("kind") in KINDS else None
     page = page_arg()
-    rows, total = search_documents(kind, page=page, **search_args())
+    args = search_args()
+    rows, total = search_documents(kind, page=page, **args)
     return render_template("search.html", rows=rows, total=total, page=page, kind=kind,
+                           snips=snippets_for(rows, args["q"], args["fulltext"]),
                            developers=developers_list(), pages=max((total + PER_PAGE - 1) // PER_PAGE, 1))
 
 
@@ -907,7 +954,8 @@ def document(doc_id):
         "WHERE c.document_id=? " + ("" if show_hidden else "AND c.status='visible' ") +
         "ORDER BY c.created_at", (doc_id,)).fetchall()
     if doc["kind"] == "plan":
-        fields = list(PLAN_FIELDS) + (list(BUSINESS_FIELDS) if doc["affects_business"] else [])
+        fields = [f for f in PLAN_FIELDS if f != "contacts"] + \
+            (list(BUSINESS_FIELDS) if doc["affects_business"] else []) + ["contacts"]
     elif doc["kind"] == "draft":
         fields = list(RIA_FIELDS)
     else:
@@ -2326,6 +2374,25 @@ def cli_import_csv(path):
     with open(path, encoding="utf-8-sig", newline="") as f:
         n, s, e = import_rows(csv.DictReader(f), admin[0] if admin else None)
     click.echo(f"Imported {n}, skipped {s}, errors {e}")
+
+
+@app.cli.command("import-legacy")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--files-dir", type=click.Path(exists=True, file_okay=False),
+              help="Folder the 'path' of attached files is relative to (default: the folder of PATH).")
+def cli_import_legacy(path, files_dir):
+    """Import or update records of the previous portal from a JSON-lines file (see legacy_import.py)."""
+    import legacy_import
+    init_db()
+    counts = legacy_import.import_jsonl(DB_PATH, path, UPLOAD_DIR, files_dir, log=click.echo)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    for i in range(0, len(counts["ids"]), 500):
+        fts_sync(conn, counts["ids"][i:i + 500])
+    conn.commit()
+    conn.close()
+    counts.pop("ids")
+    click.echo("Imported: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
 
 
 def create_admin(email, password, name="Мақоми ваколатдор"):

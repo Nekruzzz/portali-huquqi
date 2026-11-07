@@ -34,7 +34,7 @@
   {% include '_filters.html' %}
   <h2 class="result-count" aria-live="polite"><strong>{{ total }}</strong> {{ t('results') }}</h2>
   {% if rows %}
-    <div class="card-list">{% for d in rows %}{{ doc_card(d) }}{% endfor %}</div>
+    <div class="card-list">{% for d in rows %}{{ doc_card(d, snip=snips.get(d.id)) }}{% endfor %}</div>
     {{ pagination(page, pages) }}
   {% else %}
     <p class="empty">{{ t('no_results') }}</p>

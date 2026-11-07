@@ -34,11 +34,12 @@ DETAIL_FIELDS = {
                    "Показатели оценки развития и периодичность их сбора"),
     "effective_date": ("Санаи эҳтимолии мавриди амал қарор додан",
                        "Предполагаемая дата вступления в силу"),
+    "contacts": ("Тамоси таҳиякунанда", "Контакты разработчика"),
 }
-PLAN_FIELDS = ("affected",)
+PLAN_FIELDS = ("affected", "contacts")
 BUSINESS_FIELDS = ("problem", "goal", "measures", "alternatives", "costs")
 RIA_FIELDS = ("affected", "problem", "goal", "measures", "alternatives", "costs",
-              "indicators", "effective_date")
+              "indicators", "effective_date", "contacts")
 
 
 def _s(tj, ru):

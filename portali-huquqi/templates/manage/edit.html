@@ -111,7 +111,7 @@
       <label class="check only-plan"><input type="checkbox" name="affects_business" value="1" class="js-business"{% if form.get('affects_business') %} checked{% endif %}> <span>{{ t('field_business') }}</span></label>
       {% set det = form.get('details') or {} %}
       {% for key in DETAIL_FIELDS %}
-        {% set cls = 'det-always' if key == 'affected' else ('det-business' if key in BUSINESS_FIELDS else 'det-ria') %}
+        {% set cls = 'det-always' if key in ('affected', 'contacts') else ('det-business' if key in BUSINESS_FIELDS else 'det-ria') %}
         <div class="detail-pair {{ cls }}">
           <p class="detail-pair-label">{{ detail_label(key) }}</p>
           <div class="grid-2">

@@ -54,10 +54,28 @@ def _attr_filter(tag, attr, value):
     return value
 
 
+ALIGN_STYLE = re.compile(r"<(p|div|h[1-6]|td|th)\b([^>]*?)\sstyle=(\"[^\"]*\"|'[^']*')([^>]*)>", re.I)
+
+
+def _align_to_class(m):
+    """Word and the old editor centre or right-align with inline styles; keep that as a class."""
+    tag, before, style, after = m.groups()
+    align = re.search(r"text-align\s*:\s*(center|right|justify)", style, re.I)
+    cls = {"center": "center", "right": "right"}.get(align.group(1).lower()) if align else None
+    attrs = before + after
+    if cls:
+        if re.search(r"\bclass=", attrs, re.I):
+            attrs = re.sub(r"\bclass=([\"']?)", lambda c: f"class={c.group(1)}{cls} ", attrs, count=1, flags=re.I)
+        else:
+            attrs += f' class="{cls}"'
+    return f"<{tag}{attrs}>"
+
+
 def sanitize(raw):
     """Clean HTML from any source (old portal, Word, editor) down to the tags a legal text needs."""
     if not raw:
         return ""
+    raw = ALIGN_STYLE.sub(_align_to_class, raw)
     out = nh3.clean(raw, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, attribute_filter=_attr_filter,
                     clean_content_tags={"script", "style", "title", "head"}, strip_comments=True, link_rel=None,
                     url_schemes={"http", "https", "mailto"})
