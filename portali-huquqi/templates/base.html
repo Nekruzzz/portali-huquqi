@@ -20,10 +20,10 @@
   <meta property="og:locale" content="{{ 'tg_TJ' if lang == 'tj' else 'ru_RU' }}">
   {% block head_extra %}{% endblock %}
   <meta name="color-scheme" content="light dark">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ static_url('style.css') }}">
   <link rel="alternate" type="application/atom+xml" title="{{ t('feed') }}" href="{{ url_for('feed') }}">
-  <link rel="icon" href="{{ logo_url or url_for('static', filename='favicon.svg') }}">
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <link rel="icon" href="{{ logo_url or static_url('favicon.svg') }}">
+  <script src="{{ static_url('app.js') }}"></script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
 <a class="skip" href="#main">{{ t('skip') }}</a>

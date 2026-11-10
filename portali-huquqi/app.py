@@ -21,7 +21,6 @@ import sqlite3
 import sys
 import time
 import uuid
-from collections import defaultdict, deque
 from datetime import date, datetime, timedelta
 from functools import wraps
 from urllib.parse import urlparse
@@ -398,18 +397,33 @@ def consult_info(doc):
     return {"days_left": (end - td).days, "pct": round(100 * done / total), "start": start, "end": end}
 
 
-_hits = defaultdict(deque)
-
-
 def rate_limited(key, limit, window):
-    now = time.monotonic()
-    q = _hits[key]
-    while q and now - q[0] > window:
-        q.popleft()
-    if len(q) >= limit:
-        return True
-    q.append(now)
-    return False
+    """True when `key` was already used `limit` times in the last `window` seconds.
+    Kept in the database, so the limit holds across gunicorn workers and restarts.
+    Keys contain visitor addresses, so only their hash is stored, and rows are dropped after a day."""
+    db = get_db()
+    now = time.time()
+    digest = hashlib.sha256(key.encode()).hexdigest()[:32]
+    db.execute("DELETE FROM rate_hits WHERE ts < ?", (now - 86400,))
+    used = db.execute("SELECT COUNT(*) FROM rate_hits WHERE key=? AND ts > ?", (digest, now - window)).fetchone()[0]
+    if used < limit:
+        db.execute("INSERT INTO rate_hits (key, ts) VALUES (?,?)", (digest, now))
+    db.commit()
+    return used >= limit
+
+
+class _Hits:
+    """Kept so that tests can call portal._hits.clear() between logins."""
+
+    @staticmethod
+    def clear():
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("DELETE FROM rate_hits")
+        conn.commit()
+        conn.close()
+
+
+_hits = _Hits()
 
 
 def client_ip():
@@ -630,14 +644,32 @@ def headers(resp):
     resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     if request.path.startswith("/api/"):
         resp.headers["Access-Control-Allow-Origin"] = "*"
+    if request.endpoint == "static" and request.args.get("v") and resp.status_code == 200:
+        # the address changes whenever the file does (see static_url), so browsers may keep it
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return resp
+
+
+_static_versions = {}
+
+
+def static_url(filename):
+    """Address of a static file with its modification time, so an update is never hidden by a cached copy."""
+    path = os.path.join(app.static_folder, filename)
+    try:
+        mtime = int(os.path.getmtime(path))
+    except OSError:
+        return url_for("static", filename=filename)
+    if _static_versions.get(filename, (None,))[0] != mtime:
+        _static_versions[filename] = (mtime, format(mtime, "x"))
+    return url_for("static", filename=filename, v=_static_versions[filename][1])
 
 
 @app.context_processor
 def inject():
     s = get_settings()
     logo = s.get("logo_file")
-    return dict(t=t, L=L, lang=current_lang(), alt_url=alt_url, LANGS=LANGS, DOC_TYPES=DOC_TYPES, KINDS=KINDS,
+    return dict(t=t, L=L, lang=current_lang(), alt_url=alt_url, static_url=static_url, LANGS=LANGS, DOC_TYPES=DOC_TYPES, KINDS=KINDS,
                 LEGAL_STATUSES=LEGAL_STATUSES, fmt_date=fmt_date, doc_type_label=doc_type_label,
                 csrf_token=csrf_token, SLUG_OF_KIND=SLUG_OF_KIND, consult_info=consult_info, today=today(),
                 is_fallback=is_fallback, detail_label=lambda k: detail_label(k, current_lang()),
@@ -2325,9 +2357,11 @@ def sitemap():
     urls = [url_for("index", _external=True)] + [url_for("registry", slug=s, _external=True) for s in KIND_SLUGS]
     urls += [url_for(e, _external=True) for e in ("about", "stats", "developers", "news_list", "contact", "topics")]
     urls += [url_for("topic_page", slug=k, _external=True) for k in TOPICS]
-    urls += [url_for("document", doc_id=r[0], _external=True)
-             for r in get_db().execute("SELECT id FROM documents WHERE published=1")]
     body = "".join(f"<url><loc>{xml_escape(u)}</loc></url>" for u in urls)
+    base = url_for("document", doc_id=0, _external=True)[:-1]
+    body += "".join(
+        f"<url><loc>{base}{r[0]}</loc>" + (f"<lastmod>{r[1][:10]}</lastmod>" if r[1] else "") + "</url>"
+        for r in get_db().execute("SELECT id, updated_at FROM documents WHERE published=1"))
     return Response(f'<?xml version="1.0" encoding="utf-8"?><urlset '
                     f'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>',
                     mimetype="application/xml")
@@ -2384,6 +2418,16 @@ def legacy_redirect(page):
     if page in LEGACY_LIST_PAGES:
         return redirect(url_for("registry", slug=LEGACY_LIST_PAGES[page], **extra), 301)
     return redirect(url_for("index", **extra), 301)
+
+
+@app.route("/healthz")
+def healthz():
+    """For the container health check and monitoring: the app answers and the database opens."""
+    try:
+        n = get_db().execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+    except sqlite3.Error as e:
+        return jsonify(status="error", error=str(e)[:200]), 503
+    return jsonify(status="ok", documents=n)
 
 
 @app.route("/robots.txt")
@@ -2494,6 +2538,77 @@ def cli_import_legacy(path, files_dir):
     conn.close()
     counts.pop("ids")
     click.echo("Imported: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+
+
+def migration_report():
+    """Numbers to check an import from the previous portal against the old site, and what still needs attention."""
+    conn = sqlite3.connect(DB_PATH)
+    one = lambda sql, *a: conn.execute(sql, a).fetchone()[0]  # noqa: E731
+    has = "{c} IS NOT NULL AND {c}<>''"
+    out = {"registers": {}, "acts": {}, "texts": {}, "links": {}, "files": {}, "search": {}}
+    for kind in KINDS:
+        out["registers"][kind] = {
+            "total": one("SELECT COUNT(*) FROM documents WHERE kind=?", kind),
+            "from_old_portal": one("SELECT COUNT(*) FROM documents WHERE kind=? AND legacy_id IS NOT NULL", kind),
+            "highest_old_number": one("SELECT MAX(legacy_id) FROM documents WHERE kind=?", kind),
+            "hidden": one("SELECT COUNT(*) FROM documents WHERE kind=? AND published=0", kind)}
+    tj, ru = has.format(c="body_tj"), has.format(c="body_ru")
+    acts = "FROM documents WHERE kind='act'"
+    out["texts"] = {
+        "acts_text_tajik": one(f"SELECT COUNT(*) {acts} AND {tj}"),
+        "acts_text_russian": one(f"SELECT COUNT(*) {acts} AND {ru}"),
+        "acts_text_both": one(f"SELECT COUNT(*) {acts} AND {tj} AND {ru}"),
+        "acts_without_text": one(f"SELECT COUNT(*) {acts} AND NOT ({tj}) AND NOT ({ru})"),
+        "acts_title_russian_missing": one(f"SELECT COUNT(*) {acts} AND NOT ({has.format(c='title_ru')})"),
+        "earlier_wordings": one("SELECT COUNT(*) FROM document_versions"),
+        "drafts_without_text": one(f"SELECT COUNT(*) FROM documents WHERE kind='draft' AND NOT ({tj}) AND NOT ({ru})")}
+    out["acts"] = {
+        "without_date": one(f"SELECT COUNT(*) {acts} AND doc_date IS NULL"),
+        "without_number": one(f"SELECT COUNT(*) {acts} AND NOT ({has.format(c='number')})"),
+        "type_not_recognised": one(f"SELECT COUNT(*) {acts} AND coalesce(doc_type,'other')='other'"),
+        "newest_date": one(f"SELECT MAX(doc_date) {acts}"),
+        "oldest_date": one(f"SELECT MIN(doc_date) {acts}"),
+        "by_status": dict(conn.execute(f"SELECT coalesce(legal_status,'in_force'), COUNT(*) {acts} GROUP BY 1")),
+        "by_type": dict(conn.execute(f"SELECT coalesce(doc_type,'-'), COUNT(*) {acts} GROUP BY 1 ORDER BY 2 DESC"))}
+    missing = ("FROM doc_refs r WHERE r.to_legacy IS NOT NULL AND NOT EXISTS "
+               "(SELECT 1 FROM documents d WHERE d.kind='act' AND d.legacy_id=r.to_legacy)")
+    out["links"] = {
+        "amends_or_repeals": one("SELECT COUNT(*) FROM doc_links"),
+        "links_inside_texts": one("SELECT COUNT(*) FROM doc_refs"),
+        "to_acts_not_imported": one(f"SELECT COUNT(DISTINCT r.to_legacy) {missing}"),
+        "most_wanted_missing_acts": [r[0] for r in conn.execute(
+            f"SELECT r.to_legacy, COUNT(*) n {missing} GROUP BY r.to_legacy ORDER BY n DESC LIMIT 10")],
+        "drafts_without_plan": one("SELECT COUNT(*) FROM documents WHERE kind='draft' AND related_id IS NULL"),
+        "plans_drafts_without_consultation_end": one(
+            "SELECT COUNT(*) FROM documents WHERE kind IN ('plan','draft') AND consult_end IS NULL")}
+    stored = [r[0] for r in conn.execute("SELECT stored_name FROM attachments")]
+    out["files"] = {"attached": len(stored),
+                    "missing_on_disk": sum(1 for n in stored if not os.path.isfile(os.path.join(UPLOAD_DIR, n))),
+                    "megabytes": round(one("SELECT coalesce(SUM(size),0) FROM attachments") / 1048576, 1)}
+    try:
+        out["search"] = {"documents": one("SELECT COUNT(*) FROM documents"),
+                         "indexed": one("SELECT COUNT(*) FROM documents_fts")}
+    except sqlite3.OperationalError:
+        out["search"] = {"indexed": None}
+    conn.close()
+    return out
+
+
+@app.cli.command("migration-report")
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable output.")
+def cli_migration_report(as_json):
+    """Counts to compare with the previous portal after an import, and what is still missing."""
+    init_db()
+    report = migration_report()
+    if as_json:
+        click.echo(json.dumps(report, ensure_ascii=False, indent=2))
+        return
+    for section, values in report.items():
+        click.echo(f"\n{section.upper().replace('_', ' ')}")
+        for key, value in values.items():
+            if isinstance(value, dict):
+                value = ", ".join(f"{k}: {v}" for k, v in value.items())
+            click.echo(f"  {key.replace('_', ' '):<40} {value}")
 
 
 def create_admin(email, password, name="Мақоми ваколатдор"):

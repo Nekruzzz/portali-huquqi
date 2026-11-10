@@ -675,6 +675,53 @@ def test_legacy_import_from_jsonl():
     assert "ТТТ.pdf" in c.get(f"/doc/{draft['id']}").get_data(as_text=True)
 
 
+def test_operations_health_limits_static_and_report():
+    c = APP.test_client()
+    # health check for the container and monitoring
+    h = c.get("/healthz")
+    assert h.status_code == 200 and h.get_json()["status"] == "ok" and h.get_json()["documents"] >= 4
+    assert "Set-Cookie" not in h.headers
+    # static files carry a version and may then be cached for a long time
+    home = c.get("/").get_data(as_text=True)
+    css = re.search(r'href="(/static/style\.css\?v=[0-9a-f]+)"', home).group(1)
+    r = c.get(css)
+    assert r.status_code == 200 and "immutable" in r.headers["Cache-Control"]
+    assert "immutable" not in c.get("/static/style.css").headers.get("Cache-Control", "")
+    # sitemap gives the date of the last change
+    assert re.search(r"<loc>http://localhost/doc/\d+</loc><lastmod>\d{4}-\d\d-\d\d</lastmod>", c.get("/sitemap.xml").get_data(as_text=True))
+    # login attempts are limited through the database, so the limit holds across worker processes
+    portal._hits.clear()
+    for _ in range(10):
+        c.post("/login", data={"email": "nobody@example.tj", "password": "wrong-password", "csrf_token": csrf(c, "/login")})
+    import sqlite3
+    conn = sqlite3.connect(portal.DB_PATH)
+    stored = conn.execute("SELECT key FROM rate_hits").fetchall()
+    conn.close()
+    assert len(stored) == 10 and all(len(k[0]) == 32 and "127.0.0.1" not in k[0] for k in stored)
+    r = c.post("/login", data={"email": "admin@test.tj", "password": "admin-password-1", "csrf_token": csrf(c, "/login")})
+    assert r.status_code != 302  # even the right password waits once the limit is reached
+    with APP.app_context():  # "another worker": a fresh database connection sees the same count
+        assert portal.rate_limited("l:127.0.0.1", 10, 900)
+    portal._hits.clear()
+    assert login(c, "admin@test.tj", "admin-password-1").status_code == 302
+    # migration report
+    rep = portal.migration_report()
+    assert rep["registers"]["act"]["total"] >= 4 and rep["registers"]["act"]["from_old_portal"] >= 4
+    assert rep["search"]["documents"] == rep["search"]["indexed"] and rep["files"]["missing_on_disk"] == 0
+    assert rep["texts"]["acts_text_tajik"] >= 3 and isinstance(rep["links"]["most_wanted_missing_acts"], list)
+    out = APP.test_cli_runner().invoke(args=["migration-report"]).output
+    assert "REGISTERS" in out and "to acts not imported" in out
+
+
+def test_verify_migration_similarity():
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+    import verify_migration as vm
+    a = vm.words("<h6>Моддаи 1. Ҳадаф</h6><p>Матни   якум ва дуюм.</p>")
+    assert a == ["моддаи", "1", "ҳадаф", "матни", "якум", "ва", "дуюм"]
+    assert vm.similarity(a, vm.words("Моддаи 1. Ҳадаф\nМатни якум ва дуюм.")) == 1.0  # markup and spacing ignored
+    assert vm.similarity(a, a[:4]) < 0.98 and vm.similarity(a, []) == 0.0 and vm.similarity([], []) == 1.0
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in list(globals().items()):

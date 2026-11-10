@@ -92,7 +92,13 @@ cp .env.example .env        # set SITE_ADDRESS, BASE_URL, SECRET_KEY, COOKIE_SEC
 docker compose up -d --build
 docker compose exec app flask --app app create-admin admin@example.tj
 ./backup.sh                 # nightly from cron, keeps 14 days in ./backups
+./restore.sh backups/portal_2026-11-06_0230.tar.gz   # asks first; saves the current data before replacing it
 ```
+
+`/healthz` answers `{"status": "ok"}` when the app and the database work; Docker uses it as the health check
+and it can be watched by any monitoring service. Static files are addressed with a version (`style.css?v=…`)
+and cached by browsers for a year; attempt limits (login, registration, proposals) are kept in the database,
+so they hold across worker processes.
 
 ## Deploy on Vercel
 
@@ -167,6 +173,15 @@ public pages:
 ```bash
 python tools/fetch_old_portal.py --plans all --drafts all --files old/files --out old/records.jsonl
 python tools/fetch_old_portal.py --acts all --out old/records.jsonl     # ≈26 000 acts, about 15 hours, resumable
+```
+
+After an import, check it before switching the domain:
+
+```bash
+flask --app app migration-report                 # counts per register, texts per language, acts linked to
+                                                 # but not imported, files missing on disk, search index
+python tools/verify_migration.py --db /data/portal.db --sample 30    # re-reads 30 random acts from the old
+                                                 # site and compares title, number and full text
 ```
 
 ## CSV import format

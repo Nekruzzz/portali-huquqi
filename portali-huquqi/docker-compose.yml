@@ -12,6 +12,12 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-1}
     volumes:
       - portal-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   scheduler:
     build: .
@@ -38,7 +44,8 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
 volumes:
   portal-data:

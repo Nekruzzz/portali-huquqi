@@ -223,3 +223,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
     target     TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- attempts counted by rate_limited(): key is a hash of "<action>:<address or user>"
+CREATE TABLE IF NOT EXISTS rate_hits (
+    key TEXT NOT NULL,
+    ts  REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rate_hits ON rate_hits (key, ts);
