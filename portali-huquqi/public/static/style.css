@@ -976,3 +976,10 @@ html.contrast mark { background: #ff0; }
   .toc-mobile .toc-l2 { padding-left: 24px; }
 }
 @media print { .toc-mobile { display: none !important; } }
+
+/* link to an article, for citing: appears beside the heading on hover or focus; always on touch screens */
+.anchor-link { font: 600 0.9em/1 var(--font); color: var(--muted); text-decoration: none; padding: 2px 6px; border-radius: 6px; opacity: 0; transition: opacity 120ms ease; }
+.article-h:hover .anchor-link, .anchor-link:focus-visible, .article-h:target .anchor-link { opacity: 1; }
+.anchor-link:hover { color: var(--primary); background: var(--fill-2); }
+@media (hover: none) { .anchor-link { opacity: 0.6; } }
+@media print { .anchor-link { display: none !important; } }

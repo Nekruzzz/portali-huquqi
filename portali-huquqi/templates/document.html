@@ -216,6 +216,7 @@
       {% if body_html %}<div class="legal-html">{{ body_html|safe }}</div>{% endif %}
       {% for b in blocks %}
         {% if b.type == 'h' %}<h3 id="{{ b.id }}" class="article-h"><span>{{ b.text }}</span>
+          <a class="anchor-link" href="#{{ b.id }}" aria-label="{{ t('link_to_article') }}: {{ b.text }}" title="{{ t('link_to_article') }}">#</a>
           {% if doc.status == 'consultation' %}<a class="propose-here" href="?article={{ b.text[:120]|urlencode }}#comment-form" aria-label="{{ t('propose_here') }}: {{ b.text }}">{{ glyph('chat', 14, 2.2) }} {{ t('propose') }}</a>{% endif %}</h3>
         {% else %}<p>{{ b.text }}</p>{% endif %}
       {% endfor %}

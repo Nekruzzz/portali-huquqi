@@ -656,6 +656,10 @@ def test_legacy_import_from_jsonl():
     act = conn.execute("SELECT * FROM documents WHERE kind='act' AND legacy_id=700001").fetchone()
     assert act["doc_date"] == "2020-02-01" and act["mj_reg_date"] == "2020-02-03" and act["doc_type"] == "law"
     assert act["publication_tj"] is None and act["legal_status"] == "in_force" and act["body_format"] == "html"
+    # a policy area is guessed from the title when the record has none
+    assert legacy_import.guess_topic("Кодекси андози Ҷумҳурии Тоҷикистон") == "finance"
+    assert legacy_import.guess_topic("", "Закон об охране окружающей среды") == "environment"
+    assert legacy_import.guess_topic("Номи номаълум") is None
     draft = conn.execute("SELECT * FROM documents WHERE kind='draft' AND legacy_id=901").fetchone()
     plan = conn.execute("SELECT * FROM documents WHERE kind='plan' AND legacy_id=900").fetchone()
     assert draft["related_id"] == plan["id"] and plan["outcome"] == "proceed" and draft["outcome"] is None
@@ -720,6 +724,35 @@ def test_verify_migration_similarity():
     assert a == ["моддаи", "1", "ҳадаф", "матни", "якум", "ва", "дуюм"]
     assert vm.similarity(a, vm.words("Моддаи 1. Ҳадаф\nМатни якум ва дуюм.")) == 1.0  # markup and spacing ignored
     assert vm.similarity(a, a[:4]) < 0.98 and vm.similarity(a, []) == 0.0 and vm.similarity([], []) == 1.0
+
+
+def test_russian_only_act_article_links_and_revision_mail():
+    a = admin_client()
+    base = {"csrf_token": csrf(a, "/manage/documents/new"), "kind": "act", "doc_type": "other", "published": "1",
+            "doc_date": "1921-10-25", "number": "11", "title_tj": "Конвенция № 11", "title_ru": "Конвенция № 11",
+            "body_format": "html", "body_ru": "<h6>Статья 1. Право на объединение</h6><p>Только русский текст.</p>"}
+    r = a.post("/manage/documents/new", data=base)
+    new_id = int(re.search(r"/documents/(\d+)/edit", r.headers["Location"]).group(1))
+    c = APP.test_client()
+    c.get("/lang/tj")
+    page = c.get(f"/doc/{new_id}").get_data(as_text=True)
+    # a reader in Tajik still gets the text, with a note, and can link to an article
+    assert "Только русский текст." in page and "бо забони дигар нишон дода шудааст" in page
+    assert 'class="anchor-link" href="#s1"' in page
+    assert "Только русский текст." in c.get(f"/doc/{new_id}.txt").get_data(as_text=True)
+    assert c.get(f"/doc/{new_id}.docx").data[:2] == b"PK"
+    assert "Конвенция" in c.get("/acts?q=объединение&fulltext=1").get_data(as_text=True)
+    # a follower hears about a new wording
+    u = make_active_user("newwording@example.tj")
+    u.post(f"/doc/{new_id}/follow", data={"csrf_token": csrf(u, f"/doc/{new_id}")})
+    edit = {**base, "csrf_token": csrf(a, f"/manage/documents/{new_id}/edit"), "keep_version": "1",
+            "revision_date": "2020-01-01", "body_ru": "<h6>Статья 1. Право на объединение</h6><p>Новый текст.</p>"}
+    a.post(f"/manage/documents/{new_id}/edit", data=edit)
+    import sqlite3
+    conn = sqlite3.connect(portal.DB_PATH)
+    mail = conn.execute("SELECT subject, body FROM outbox WHERE to_email='newwording@example.tj'").fetchall()
+    conn.close()
+    assert len(mail) == 1 and "Новая редакция акта" in mail[0][0] and "01.01.2020" in mail[0][1]
 
 
 if __name__ == "__main__":

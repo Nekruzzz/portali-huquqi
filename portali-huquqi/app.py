@@ -362,6 +362,14 @@ def L(row, field, lang=None):
     return val or (row[f"{field}_tj"] if f"{field}_tj" in keys else "") or ""
 
 
+def body_of(row, lang=None, field="body"):
+    """Text in the reader's language; if it exists only in the other language, that one
+    (many older and international acts are kept in Russian only)."""
+    lang = lang or current_lang()
+    other = "ru" if lang == "tj" else "tj"
+    return row[f"{field}_{lang}"] or row[f"{field}_{other}"] or ""
+
+
 def is_fallback(row, field):
     return current_lang() != "tj" and not row[f"{field}_{current_lang()}"] and bool(row[f"{field}_tj"])
 
@@ -839,7 +847,7 @@ def snippets_for(rows, q, fulltext):
     for r in rows:
         sources = [L(r, "summary")]
         if fulltext:
-            body = r[f"body_{lang}"] or r["body_tj"] or ""
+            body = body_of(r, lang)
             sources.append(legaltext.to_text(body) if r["body_format"] == "html" else body)
         for text in sources:
             text = " ".join((text or "").split())
@@ -1032,7 +1040,8 @@ def render_body(doc, body, fmt, propose=False):
                 f"SELECT id, legacy_id FROM documents WHERE kind='act' AND published=1 AND legacy_id IN ({marks})",
                 list(ids))}
         body = legaltext.resolve_links(body, mapping, lambda i: url_for("document", doc_id=i))
-        html, toc = legaltext.structure(body, t("propose") if propose else None, t("propose_here"))
+        html, toc = legaltext.structure(body, t("propose") if propose else None, t("propose_here"),
+                                        link_label=t("link_to_article"))
         return html, toc, []
     blocks = body_blocks(body)
     return None, [{"id": b["id"], "text": b["text"], "level": 3} for b in blocks if b["type"] == "h"], blocks
@@ -1041,7 +1050,7 @@ def render_body(doc, body, fmt, propose=False):
 def render_prev(doc):
     """Drafts: the wording of the existing act that the draft changes."""
     lang = current_lang()
-    prev = doc[f"prev_body_{lang}"] or doc["prev_body_tj"]
+    prev = body_of(doc, lang, "prev_body")
     if not prev:
         return None
     if doc["body_format"] == "html":
@@ -1090,7 +1099,7 @@ def document(doc_id):
     lang = current_lang()
     version = selected_version(doc)
     src = version or doc
-    body = src[f"body_{lang}"] or src["body_tj"]
+    body = body_of(src, lang)
     body_html, toc, blocks = render_body(doc, body, src["body_format"],
                                          propose=doc["status"] == "consultation" and not version)
     links = {"amended_by": [], "amends": [], "repealed_by": [], "repeals": []}
@@ -1137,7 +1146,7 @@ def export_source(doc_id):
     version = selected_version(doc)
     src = version or doc
     lang = current_lang()
-    return doc, src, src[f"body_{lang}"] or src["body_tj"] or ""
+    return doc, src, body_of(src, lang)
 
 
 def export_meta(doc):
@@ -1186,8 +1195,8 @@ def compare_versions(doc_id):
                            (int(raw), doc_id)).fetchone()
             if not v:
                 abort(404)
-            return v, legaltext.paragraphs(v[f"body_{lang}"] or v["body_tj"], v["body_format"])
-        return None, legaltext.paragraphs(doc[f"body_{lang}"] or doc["body_tj"], doc["body_format"])
+            return v, legaltext.paragraphs(body_of(v, lang), v["body_format"])
+        return None, legaltext.paragraphs(body_of(doc, lang), doc["body_format"])
     va, pa = side(request.args.get("a", ""))
     vb, pb = side(request.args.get("b", ""))
     rows, counts = legaltext.compare(pa, pb)
@@ -1822,11 +1831,15 @@ def edit_document(doc_id=None):
                 (kind, vals["legacy_id"], doc["id"] if doc else 0)).fetchone():
             errors.append(t("err_legacy_taken"))
         if not errors:
-            if doc and kind == "act" and f.get("keep_version") and doc["body_tj"] and \
+            if doc and kind == "act" and f.get("keep_version") and (doc["body_tj"] or doc["body_ru"]) and \
                     (vals["body_tj"], vals["body_ru"]) != (doc["body_tj"], doc["body_ru"]):
                 if not vals["revision_date"] or vals["revision_date"] == doc["revision_date"]:
                     vals["revision_date"] = today().isoformat()
                 keep_version(doc, vals["revision_date"], g.user["id"])
+                url = abs_url("document", doc_id=doc["id"])
+                notify_users(followers_of(doc["id"]), "mail_revision_s", "mail_revision_b",
+                             lambda lg: {"title": doc_title(doc, lg), "date": fmt_date(vals["revision_date"]),
+                                         "url": url + "#versions"}, exclude_id=g.user["id"])
             if doc:
                 sets = ", ".join(f"{k}=?" for k in vals)
                 db.execute(f"UPDATE documents SET {sets}, updated_at=datetime('now') WHERE id=?",

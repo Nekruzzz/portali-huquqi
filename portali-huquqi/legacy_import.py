@@ -56,6 +56,47 @@ DETAIL_KEYS = ("affected", "problem", "goal", "measures", "alternatives", "costs
                "contacts")
 
 
+# Policy area guessed from the subject of the title (Tajik and Russian word beginnings), first match wins.
+# Deliberately cautious: a record with no clear match gets no topic rather than a wrong one.
+# Only used when a record brings no topic of its own; an editor can change it later.
+TOPIC_WORDS = [
+    ("finance", ("андоз", "буҷет", "бонк", "молия", "суғурта", "гумрук", "налог", "бюджет", "банк",
+                 "финанс", "страхов", "таможен", "кредит")),
+    ("health", ("тандуруст", "тиббӣ", "дору", "саломат", "здравоохран", "медицин", "лекарств", "санитар")),
+    ("education", ("маориф", "таҳсил", "мактаб", "донишгоҳ", "образован", "науке", "научн", "школ", "университет")),
+    ("social", ("меҳнат", "нафақа", "шуғл", "маъюб", "ҳифзи иҷтимо", "труд", "пенси", "социальн", "занятост",
+                "инвалид")),
+    ("environment", ("муҳити зист", "эколог", "ҷангал", "пирях", "окружающ", "охране природ", "лесн", "ледник")),
+    ("agriculture", ("кишоварз", "обёр", "деҳқон", "чорво", "захираҳои об", "сельск", "земел", "водн", "ороше",
+                     "дехкан", "животновод")),
+    ("transport", ("нақлиёт", "роҳҳои автомобил", "ҳавопаймо", "транспорт", "автомобильн", "дорожн", "авиац",
+                   "железнодорож")),
+    ("digital", ("рақамӣ", "рақамикунон", "интернет", "алоқаи барқ", "электрон", "цифров", "информатиз", "связи")),
+    ("energy", ("энерг", "саноат", "нафт", "маъдан", "промышленн", "нефт", "недр")),
+    ("economy", ("соҳибкор", "иҷозат", "савдо", "сармоягузор", "рақобат", "иқтисод", "консесси", "предприним",
+                 "лиценз", "торгов", "инвестиц", "конкуренц", "экономи", "концесси")),
+    ("justice", ("суд", "ҷиноят", "прокурат", "адлия", "амнияти миллӣ", "милитсия", "мудофиа", "уголовн", "юстиц",
+                 "национальной безопасност", "милиц", "оборон", "маъмурӣ", "административн", "санадҳои меъёрии ҳуқуқ",
+                 "нормативных правовых")),
+    ("state", ("интихобот", "хизмати давлатӣ", "конститутс", "выбор", "государственной служб", "конституц")),
+]
+_TOPIC_RES = [(topic, re.compile(r"(?<!\w)(?:" + "|".join(map(re.escape, words)) + ")"))
+              for topic, words in TOPIC_WORDS]
+_QUOTED = re.compile(r"[«\"“](.+)[»\"”]?", re.S)
+
+
+def guess_topic(*titles):
+    """The subject is what stands in quotes ("Қарори Ҳукумат ... «Дар бораи ...»"); otherwise the whole title."""
+    for title in titles:
+        title = (title or "").lower()
+        m = _QUOTED.search(title)
+        subject = m.group(1) if m else title
+        for topic, pattern in _TOPIC_RES:
+            if pattern.search(subject):
+                return topic
+    return None
+
+
 def norm_date(value):
     v = (value or "").strip()[:10]
     m = DATE_DMY.match(v)
@@ -116,6 +157,7 @@ def _row_values(rec):
         "body_ru": clean(_lang(rec, "body", "ru") or "") or None,
         "summary_tj": _lang(rec, "summary", "tj"), "summary_ru": _lang(rec, "summary", "ru"),
         "published": 1,
+        "topic": rec.get("topic") or guess_topic(title_tj, _lang(rec, "title", "ru")),
         "source_url": rec.get("source_url") if re.match(r"^https?://", rec.get("source_url") or "") else None,
     }
     if kind == "act":

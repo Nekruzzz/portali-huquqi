@@ -95,7 +95,7 @@ def _strip_tags(fragment):
     return " ".join(html_lib.unescape(re.sub(r"<[^>]+>", " ", fragment)).split())
 
 
-def structure(body_html, propose_label=None, propose_title=None):
+def structure(body_html, propose_label=None, propose_title=None, link_label=None):
     """Give every heading an anchor and list them for the table of contents.
     With propose_label, a "propose" link is added to each heading (drafts in consultation).
     Returns (html, headings) where headings = [{"id", "text", "level"}]."""
@@ -119,9 +119,12 @@ def structure(body_html, propose_label=None, propose_title=None):
             attrs += f' id="{hid}"'
         headings.append({"id": hid, "text": text, "level": int(level)})
         extra = ""
+        if link_label:  # a link to this very article, to copy and cite
+            extra = (f' <a class="anchor-link" href="#{hid}" aria-label="{html_lib.escape(link_label)}: '
+                     f'{html_lib.escape(text)}" title="{html_lib.escape(link_label)}">#</a>')
         if propose_label:
             from urllib.parse import quote
-            extra = (f' <a class="propose-here" href="?article={quote(text[:120])}#comment-form" '
+            extra += (f' <a class="propose-here" href="?article={quote(text[:120])}#comment-form" '
                      f'aria-label="{html_lib.escape(propose_title or propose_label)}: {html_lib.escape(text)}">'
                      f"{html_lib.escape(propose_label)}</a>")
         return f'<h{level}{attrs} class="article-h">{inner}{extra}</h{level}>'
