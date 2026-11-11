@@ -736,6 +736,18 @@ def test_operations_health_limits_static_and_report():
     assert rep["registers"]["act"]["total"] >= 4 and rep["registers"]["act"]["from_old_portal"] >= 4
     assert rep["search"]["documents"] == rep["search"]["indexed"] and rep["files"]["missing_on_disk"] == 0
     assert rep["texts"]["acts_text_tajik"] >= 3 and isinstance(rep["links"]["most_wanted_missing_acts"], list)
+    # the same numbers for the authorised body, and a not-found page that helps
+    a = admin_client()
+    page = a.get("/manage/data").get_data(as_text=True)
+    assert "Санҷиши маълумот" in page and "Пайванд ба санадҳои ворид нашуда" in page
+    assert APP.test_client().get("/manage/data").status_code == 302  # visitors are sent to log in
+    nf = APP.test_client().get("/doc/999999")
+    assert nf.status_code == 404 and 'class="error-search"' in nf.get_data(as_text=True)
+    # API: only what changed since a date, lookup by the old number, page count
+    api = c.get("/api/documents?updated_since=2000-01-01&per_page=5").get_json()
+    assert api["total"] >= 4 and api["pages"] >= 1 and "updated_at" in api["items"][0]
+    assert c.get("/api/documents?updated_since=2999-01-01").get_json()["total"] == 0
+    assert c.get("/api/documents?legacy_id=19892").get_json()["items"][0]["number"] == "1414"
     out = APP.test_cli_runner().invoke(args=["migration-report"]).output
     assert "REGISTERS" in out and "to acts not imported" in out
 

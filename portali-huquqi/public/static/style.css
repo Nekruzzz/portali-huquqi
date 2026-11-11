@@ -983,3 +983,11 @@ html.contrast mark { background: #ff0; }
 .anchor-link:hover { color: var(--primary); background: var(--fill-2); }
 @media (hover: none) { .anchor-link { opacity: 0.6; } }
 @media print { .anchor-link { display: none !important; } }
+
+/* not-found page: search and the registers one tap away */
+.error-search { display: flex; gap: 8px; max-width: 460px; margin: 18px auto; }
+.error-search input { flex: 1; min-width: 0; }
+.error-links { display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: center; }
+/* the role label never squeezes the management tabs */
+.subnav { overflow-x: auto; }
+.subnav-role { flex: none; }

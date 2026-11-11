@@ -39,8 +39,8 @@ def _attr_filter(tag, attr, value):
     if attr == "class":
         kept = [f"lt-{c}" for c in value.split() if c in KEEP_CLASSES]
         return " ".join(kept) or None
-    if attr in ("id", "name"):
-        return value if ID_RE.match(value) and value not in RESERVED_IDS else None
+    if attr in ("id", "name"):  # "el_..." ids belong to the old portal's page, not to the text
+        return value if ID_RE.match(value) and value not in RESERVED_IDS and not value.startswith("el_") else None
     if attr == "href":
         value = html_lib.unescape(value).strip()
         m = OLD_ACT_LINK.search(value)
@@ -71,6 +71,16 @@ def _align_to_class(m):
     return f"<{tag}{attrs}>"
 
 
+def _balanced_spans(fragment):
+    """True when every </span> in the fragment closes a <span> opened inside it."""
+    depth = 0
+    for closing in re.findall(r"<(/?)span\b", fragment):
+        depth += -1 if closing else 1
+        if depth < 0:
+            return False
+    return depth == 0
+
+
 def sanitize(raw):
     """Clean HTML from any source (old portal, Word, editor) down to the tags a legal text needs."""
     if not raw:
@@ -88,6 +98,13 @@ def sanitize(raw):
         return tag.replace(' name="', ' id="', 1)
     out = re.sub(r"<a\b[^>]*\bname=\"[^\"]*\"[^>]*>", fix_anchor, out)
     out = re.sub(r"(<p>\s*(?:&nbsp;|\s)*</p>\s*){2,}", "<p>&nbsp;</p>", out)  # runs of empty paragraphs
+    out = re.sub(r"<(strong|b|em|i|u|span)>\s*</\1>", "", out)  # empty inline tags
+    # wrappers the old portal's page put around a whole text: <span><span> ... </span></span>
+    while True:
+        m = re.fullmatch(r"\s*<span[^>]*>(.*)</span>\s*", out, re.S)
+        if not m or not _balanced_spans(m.group(1)):
+            break
+        out = m.group(1)
     return out.strip()
 
 

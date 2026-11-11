@@ -4,6 +4,21 @@
 <div class="wrap narrow section center">
   <p class="error-code">{{ code }}</p>
   <h1>{{ t('err_' ~ code) }}</h1>
+  {% if code == 404 %}
+  <p class="muted">{{ t('err_404_hint') }}</p>
+  <form class="error-search" action="{{ url_for('search') }}" role="search">
+    <label class="sr-only" for="eq">{{ t('nav_search') }}</label>
+    <input id="eq" name="q" type="search" placeholder="{{ t('search_placeholder') }}">
+    <button class="btn btn-primary" type="submit">{{ t('search_btn') }}</button>
+  </form>
+  <p class="error-links">
+    <a href="{{ url_for('registry', slug='acts') }}">{{ t('nav_acts') }}</a>
+    <a href="{{ url_for('registry', slug='drafts') }}">{{ t('nav_drafts') }}</a>
+    <a href="{{ url_for('registry', slug='plans') }}">{{ t('nav_plans') }}</a>
+    <a href="{{ url_for('index') }}">{{ t('err_back') }}</a>
+  </p>
+  {% else %}
   <p><a class="btn btn-primary" href="{{ url_for('index') }}">{{ t('err_back') }}</a></p>
+  {% endif %}
 </div>
 {% endblock %}

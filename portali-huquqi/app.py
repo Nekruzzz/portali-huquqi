@@ -276,6 +276,16 @@ def refs_sync(conn, ids=None):
     conn.executemany("INSERT INTO doc_refs (from_id, to_legacy, to_id) VALUES (?,?,?)", out)
 
 
+def reindex_all():
+    """Search index and links between texts for everything (after content was written straight to the database)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    fts_sync(conn)
+    refs_sync(conn)
+    conn.commit()
+    conn.close()
+
+
 def fts_ready(db):
     """True when the index can be used. Documents added or removed outside the app are caught up here,
     only those that differ. Counts come from the index's small size table: COUNT(*) on the index itself
@@ -774,8 +784,14 @@ def can_edit(doc):
 # ---------------------------------------------------------------------------
 def search_documents(kind=None, q="", doc_type="", year="", status="", sort="new", page=1, per_page=PER_PAGE,
                      owner_id=None, include_hidden=False, developer="", legal="", fulltext=False, topic="",
-                     kinds=None):
+                     kinds=None, updated_since=None, legacy_id=None):
     where, params = [], []
+    if updated_since:  # for systems that keep a copy and ask only for what changed
+        where.append("d.updated_at >= ?")
+        params.append(updated_since)
+    if legacy_id:
+        where.append("d.legacy_id = ?")
+        params.append(legacy_id)
     if kinds:  # several registers at once, e.g. plans and drafts on the home page
         where.append(f"d.kind IN ({','.join('?' * len(kinds))})")
         params.extend(kinds)
@@ -2094,6 +2110,21 @@ def user_application(user_id):
     return render_application(u)
 
 
+@app.route("/manage/data")
+@roles_required("admin")
+def manage_data():
+    """What the registers hold after an import and what still needs attention."""
+    rep = migration_report()
+    checks = [("acts_without_text", rep["texts"]["acts_without_text"]),
+              ("without_date", rep["acts"]["without_date"]), ("without_number", rep["acts"]["without_number"]),
+              ("type_not_recognised", rep["acts"]["type_not_recognised"]),
+              ("to_acts_not_imported", rep["links"]["to_acts_not_imported"]),
+              ("drafts_without_plan", rep["links"]["drafts_without_plan"]),
+              ("missing_on_disk", rep["files"]["missing_on_disk"]),
+              ("not_indexed", (rep["search"].get("documents") or 0) - (rep["search"]["indexed"] or 0))]
+    return render_template("manage/data.html", rep=rep, checks=checks)
+
+
 @app.route("/manage/audit")
 @roles_required("admin")
 def manage_audit():
@@ -2287,6 +2318,7 @@ def doc_json(d, full=False):
         "code": doc_code(d), "topic": d["topic"], "views": d["views"],
         "stage": dict(zip(("index", "state"), (stage_info(d)["idx"], stage_info(d)["state"]))),
         "url": url_for("document", doc_id=d["id"], _external=True), "legacy_id": d["legacy_id"],
+        "updated_at": d["updated_at"],
     }
     if full:
         out.update({
@@ -2332,8 +2364,13 @@ def api_documents():
         per = min(max(int(request.args.get("per_page", 20)), 1), 100)
     except ValueError:
         per = 20
-    rows, total = search_documents(kind, page=page, per_page=per, **search_args())
-    return jsonify(total=total, page=page, per_page=per, items=[doc_json(r) for r in rows])
+    since = request.args.get("updated_since", "")
+    legacy = request.args.get("legacy_id", "")
+    rows, total = search_documents(kind, page=page, per_page=per, **search_args(),
+                                   updated_since=since if parse_date(since[:10]) else None,
+                                   legacy_id=int(legacy) if legacy.isdigit() else None)
+    return jsonify(total=total, page=page, per_page=per, pages=max((total + per - 1) // per, 1),
+                   items=[doc_json(r) for r in rows])
 
 
 @app.route("/api/documents/<int:doc_id>")
@@ -2511,6 +2548,7 @@ def cli_seed():
     from seed import seed_demo
     init_db()
     seed_demo(DB_PATH)
+    reindex_all()
     click.echo("Demo content added.")
 
 
@@ -2665,6 +2703,7 @@ def bootstrap():
     if db_is_empty():
         from seed import seed_demo
         seed_demo(DB_PATH)
+        reindex_all()
         print("Demo content added.")
     email = (os.environ.get("ADMIN_EMAIL") or "admin@portal.local").lower()
     pw = os.environ.get("ADMIN_PASSWORD")

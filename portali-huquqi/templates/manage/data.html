@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('data_check') }}{% endblock %}
+{% block content %}
+<div class="wrap section">
+  {% include 'manage/_nav.html' %}
+  <h1>{{ t('data_check') }}</h1>
+  <p class="lead">{{ t('data_check_lead') }}</p>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>{{ t('kind_label') }}</th><th>{{ t('dq_total') }}</th><th>{{ t('dq_from_old') }}</th><th>{{ t('dq_hidden') }}</th></tr></thead>
+    <tbody>
+    {% for kind, v in rep.registers.items() %}
+      <tr><td>{{ t('nav_' ~ SLUG_OF_KIND[kind]) }}</td><td>{{ v.total }}</td><td>{{ v.from_old_portal }}</td><td>{{ v.hidden }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <h2>{{ t('dq_attention') }}</h2>
+  <div class="table-wrap"><table class="table">
+    <tbody>
+    {% for key, value in checks %}
+      <tr><td>{{ t('dq_' ~ key) }}</td>
+          <td><span class="badge {{ 'badge-d-accepted' if not value else 'badge-d-partial' }}">{{ value }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <h2>{{ t('dq_texts') }}</h2>
+  <div class="table-wrap"><table class="table">
+    <tbody>
+      <tr><td>{{ t('dq_acts_tj') }}</td><td>{{ rep.texts.acts_text_tajik }}</td></tr>
+      <tr><td>{{ t('dq_acts_ru') }}</td><td>{{ rep.texts.acts_text_russian }}</td></tr>
+      <tr><td>{{ t('dq_acts_both') }}</td><td>{{ rep.texts.acts_text_both }}</td></tr>
+      <tr><td>{{ t('dq_versions') }}</td><td>{{ rep.texts.earlier_wordings }}</td></tr>
+      <tr><td>{{ t('dq_dates') }}</td><td>{{ fmt_date(rep.acts.oldest_date) or '—' }} — {{ fmt_date(rep.acts.newest_date) or '—' }}</td></tr>
+      <tr><td>{{ t('dq_files') }}</td><td>{{ rep.files.attached }} · {{ rep.files.megabytes }} MB</td></tr>
+      <tr><td>{{ t('dq_search') }}</td><td>{{ rep.search.indexed }} / {{ rep.search.documents }}</td></tr>
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

@@ -8,6 +8,7 @@
   <a href="{{ url_for('manage_news') }}"{% if ep in ('manage_news', 'edit_news') %} aria-current="page"{% endif %}>{{ t('nav_news') }}</a>
   <a href="{{ url_for('manage_import') }}"{% if ep == 'manage_import' %} aria-current="page"{% endif %}>{{ t('import') }}</a>
   <a href="{{ url_for('manage_settings') }}"{% if ep == 'manage_settings' %} aria-current="page"{% endif %}>{{ t('settings') }}</a>
+  <a href="{{ url_for('manage_data') }}"{% if ep == 'manage_data' %} aria-current="page"{% endif %}>{{ t('data_check') }}</a>
   <a href="{{ url_for('manage_audit') }}"{% if ep == 'manage_audit' %} aria-current="page"{% endif %}>{{ t('audit') }}</a>
   {% endif %}
   <span class="subnav-role">{{ t('role_' ~ g.user.role) }}</span>
