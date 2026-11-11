@@ -218,6 +218,7 @@ FTS_COLS = ("title_tj", "title_ru", "number", "summary_tj", "summary_ru", "devel
             "keywords", "body_tj", "body_ru")
 FTS_DDL = ("CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5("
            + ", ".join(FTS_COLS) + ", tokenize=\"unicode61 remove_diacritics 2\")")
+FTS_SIZES = "documents_fts_docsize"  # one small row per indexed document
 FTS_TITLE_COLS = "{title_tj title_ru number summary_tj summary_ru developer_tj developer_ru keywords}"
 FTS_WEIGHTS = "10.0, 10.0, 8.0, 3.0, 3.0, 2.0, 2.0, 4.0, 1.0, 1.0"
 
@@ -276,15 +277,25 @@ def refs_sync(conn, ids=None):
 
 
 def fts_ready(db):
-    """True when the index can be used; re-indexes everything if documents were added outside the app."""
+    """True when the index can be used. Documents added or removed outside the app are caught up here,
+    only those that differ. Counts come from the index's small size table: COUNT(*) on the index itself
+    reads all of it (0.16 s on every search with 26,000 acts, 1.5 s cold)."""
     try:
-        n_docs = db.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
-        n_fts = db.execute("SELECT COUNT(*) FROM documents_fts").fetchone()[0]
+        docs = tuple(db.execute("SELECT COUNT(*), MAX(id) FROM documents").fetchone())
+        indexed = tuple(db.execute(f"SELECT COUNT(*), MAX(id) FROM {FTS_SIZES}").fetchone())
+        if docs != indexed:
+            missing = [r[0] for r in db.execute(
+                f"SELECT id FROM documents WHERE id NOT IN (SELECT id FROM {FTS_SIZES})")]
+            gone = [r[0] for r in db.execute(
+                f"SELECT id FROM {FTS_SIZES} WHERE id NOT IN (SELECT id FROM documents)")]
+            for i in range(0, len(missing), 500):
+                fts_sync(db, missing[i:i + 500])
+            for i in range(0, len(gone), 500):
+                chunk = gone[i:i + 500]
+                db.execute(f"DELETE FROM documents_fts WHERE rowid IN ({','.join('?' * len(chunk))})", chunk)
+            db.commit()
     except sqlite3.OperationalError:
         return False
-    if n_docs != n_fts:
-        fts_sync(db)
-        db.commit()
     return True
 
 
@@ -2208,6 +2219,7 @@ def import_rows(reader, owner_id):
     db = get_db() if has_request_context() else None
     conn = db or sqlite3.connect(DB_PATH)
     n = skipped = errors = 0
+    new_ids = []
     for row in reader:
         row = {(k or "").strip(): (v or "").strip() for k, v in row.items()}
         kind = row.get("kind") or "act"
@@ -2235,7 +2247,10 @@ def import_rows(reader, owner_id):
              row.get("developer_tj") or None, row.get("developer_ru") or None, row.get("summary_tj") or None,
              row.get("summary_ru") or None, row.get("body_tj") or None, row.get("body_ru") or None,
              row.get("publication_tj") or None, legal, src, owner_id, topic))
+        new_ids.append(cur.lastrowid)
         n += 1
+    conn.row_factory = sqlite3.Row
+    fts_sync(conn, new_ids)
     conn.commit()
     if not db:
         conn.close()
@@ -2600,7 +2615,7 @@ def migration_report():
                     "megabytes": round(one("SELECT coalesce(SUM(size),0) FROM attachments") / 1048576, 1)}
     try:
         out["search"] = {"documents": one("SELECT COUNT(*) FROM documents"),
-                         "indexed": one("SELECT COUNT(*) FROM documents_fts")}
+                         "indexed": one(f"SELECT COUNT(*) FROM {FTS_SIZES}")}
     except sqlite3.OperationalError:
         out["search"] = {"indexed": None}
     conn.close()

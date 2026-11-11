@@ -643,6 +643,12 @@ def test_legacy_import_from_jsonl():
     path = os.path.join(folder, "records.jsonl")
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(json.dumps(r, ensure_ascii=False) for r in recs) + "\nnot json\n")
+    # a record may only attach files from the import folder
+    with open(os.path.join(os.path.dirname(folder), "outside.pdf"), "wb") as f:
+        f.write(b"secret")
+    recs[3]["files"].append({"name": "x.pdf", "path": "../outside.pdf"})
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(json.dumps(r, ensure_ascii=False) for r in recs) + "\nnot json\n")
     counts = legacy_import.import_jsonl(portal.DB_PATH, path, portal.UPLOAD_DIR, log=lambda *_: None)
     assert counts["inserted"] == 4 and counts["errors"] == 2 and counts["files"] == 1
     assert counts["links"] == 1 and counts["versions"] == 1
@@ -676,7 +682,24 @@ def test_legacy_import_from_jsonl():
     assert "фосфоритӣ" in c.get("/acts?q=фосфорити&fulltext=1").get_data(as_text=True)
     plan_page = c.get(f"/doc/{plan['id']}").get_data(as_text=True)
     assert "Тамоси таҳиякунанда" in plan_page and "ш. Душанбе, 123" in plan_page
-    assert "ТТТ.pdf" in c.get(f"/doc/{draft['id']}").get_data(as_text=True)
+    draft_page = c.get(f"/doc/{draft['id']}").get_data(as_text=True)
+    assert "ТТТ.pdf" in draft_page and "x.pdf" not in draft_page
+    # documents written straight into the database are picked up by the search on its next use, and removed ones dropped
+    conn = sqlite3.connect(portal.DB_PATH)
+    conn.execute("INSERT INTO documents (kind, title_tj) VALUES ('act', 'Санади берунии зарафшонӣ')")
+    conn.execute("DELETE FROM documents WHERE kind='act' AND legacy_id=700002")
+    conn.commit()
+    conn.close()
+    assert "зарафшонӣ" in c.get("/acts?q=зарафшони").get_data(as_text=True)
+    assert "ворид намудани тағйирот" not in c.get("/acts?q=700002+тағйирот").get_data(as_text=True)
+    conn = sqlite3.connect(portal.DB_PATH)
+    assert conn.execute("SELECT COUNT(*) FROM documents").fetchone() == conn.execute(
+        "SELECT COUNT(*) FROM documents_fts_docsize").fetchone()
+    conn.close()
+    # headings keep one class attribute
+    import legaltext
+    html, _ = legaltext.structure(legaltext.sanitize('<h2 style="text-align:center">Боби 1</h2>'))
+    assert html.count("class=") == 1 and 'class="article-h lt-center"' in html
 
 
 def test_operations_health_limits_static_and_report():

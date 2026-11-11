@@ -127,7 +127,11 @@ def structure(body_html, propose_label=None, propose_title=None, link_label=None
             extra += (f' <a class="propose-here" href="?article={quote(text[:120])}#comment-form" '
                      f'aria-label="{html_lib.escape(propose_title or propose_label)}: {html_lib.escape(text)}">'
                      f"{html_lib.escape(propose_label)}</a>")
-        return f'<h{level}{attrs} class="article-h">{inner}{extra}</h{level}>'
+        if 'class="' in attrs:  # keep alignment classes of the original heading
+            attrs = attrs.replace('class="', 'class="article-h ', 1)
+        else:
+            attrs += ' class="article-h"'
+        return f'<h{level}{attrs}>{inner}{extra}</h{level}>'
     return HEADING_RE.sub(fix, body_html or ""), headings
 
 

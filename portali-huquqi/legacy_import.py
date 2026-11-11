@@ -204,7 +204,9 @@ def _row_values(rec):
 def _copy_files(conn, doc_id, files, base_dir, upload_dir):
     added = 0
     for f in files or []:
-        src = os.path.join(base_dir, f.get("path") or "")
+        src = os.path.realpath(os.path.join(base_dir, f.get("path") or ""))
+        if not src.startswith(os.path.realpath(base_dir) + os.sep):
+            continue  # only files inside the import folder; a record must not pull in other files of the server
         name = re.sub(r"[\\/:*?\"<>|\x00-\x1f]", "_", (f.get("name") or os.path.basename(src)))[:150]
         if not f.get("path") or not os.path.isfile(src):
             continue

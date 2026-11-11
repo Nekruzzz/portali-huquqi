@@ -83,7 +83,7 @@ def files_in(cell, folder):
 
 
 def download(fetcher, folder, href, name, files_dir, rel_prefix):
-    safe = re.sub(r"[\\/:*?\"<>|\x00-\x1f]", "_", name)[:150]
+    safe = re.sub(r"[\\/:*?\"<>|\x00-\x1f]", "_", name)[:150].strip(". ") or "file"
     target = os.path.join(files_dir, rel_prefix, safe)
     if not os.path.exists(target):
         os.makedirs(os.path.dirname(target), exist_ok=True)
